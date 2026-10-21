@@ -33,6 +33,7 @@ import time
 from datetime import date
 from pathlib import Path
 
+import requests
 from nba_api.stats.endpoints import (
     commonallplayers,
     commonplayerinfo,
@@ -40,6 +41,7 @@ from nba_api.stats.endpoints import (
     playerawards,
     playercareerstats,
 )
+from nba_api.stats.library.http import NBAStatsHTTP
 from nba_api.stats.static import teams as static_teams
 
 FIRST_SEASON = 1970          # 1970-71 is the earliest season included
@@ -81,22 +83,56 @@ def season_str(year: int) -> str:
     return f"{year}-{str(year + 1)[-2:]}"
 
 
+# nba_api parses whatever comes back, so a 429/5xx page would show up as a
+# parse error. Raise those as HTTP errors first so they count as network errors.
+def _raise_retryable(resp, *args, **kwargs):
+    if resp.status_code == 429 or resp.status_code >= 500:
+        resp.raise_for_status()
+
+
+_session = requests.Session()
+_session.hooks["response"].append(_raise_retryable)
+NBAStatsHTTP.set_session(_session)
+
+# NBA.com answered, but the data wasn't what we expected. Retrying won't help.
+PARSE_ERRORS = (KeyError, ValueError, TypeError, IndexError, AttributeError)
+
+
+class BadResponse(Exception):
+    pass
+
+
 def fetch(kind: str, pid, call, required=True):
-    """Fetch one endpoint, caching the raw response. Retries with backoff.
-    If required=False, gives up and returns None instead of exiting."""
+    """Fetch one endpoint, caching the raw response.
+    Network errors (timeouts, connection errors, 429/5xx) retry with backoff.
+    Unusable data is cached as null so it isn't refetched, then raises
+    BadResponse (or returns None if required=False)."""
     f = CACHE / f"{kind}_{pid}.json"
     if f.exists():
-        return json.loads(f.read_text())
+        data = json.loads(f.read_text())
+        if data is None:
+            if not required:
+                return None
+            raise BadResponse(f"{kind} {pid}")
+        return data
     for attempt in range(6):
         try:
             data = call()
-            f.write_text(json.dumps(data))
+        except PARSE_ERRORS as e:
+            print(f"   {kind} {pid}: unusable response ({e.__class__.__name__}: {e}), skipping")
+            f.write_text("null")
             time.sleep(SLEEP + random.random() * 0.4)
-            return data
-        except Exception as e:  # timeouts, connection resets, 429s
+            if not required:
+                return None
+            raise BadResponse(f"{kind} {pid}") from e
+        except requests.exceptions.RequestException as e:
             wait = 10 * (attempt + 1)
             print(f"   {kind} {pid}: {e.__class__.__name__}, retrying in {wait}s")
             time.sleep(wait)
+            continue
+        f.write_text(json.dumps(data))
+        time.sleep(SLEEP + random.random() * 0.4)
+        return data
     if not required:
         return None
     sys.exit(f"\nNBA.com stopped answering at {kind} {pid}. "
@@ -209,16 +245,24 @@ def main():
     CACHE.mkdir(exist_ok=True)
     season = current_season()
     print(f"Getting the full player list (through {season})...")
-    everyone = fetch("all", season, lambda: commonallplayers.CommonAllPlayers(
-        is_only_current_season=0, league_id="00", season=season, timeout=60).get_dict())
+    try:
+        everyone = fetch("all", season, lambda: commonallplayers.CommonAllPlayers(
+            is_only_current_season=0, league_id="00", season=season, timeout=60).get_dict())
+    except BadResponse:
+        sys.exit(f"\nNBA.com sent an unusable player list. Delete cache/all_{season}.json "
+                 "and rerun in a few minutes.")
     pool = [p for p in rows(everyone, "CommonAllPlayers")
             if p.get("GAMES_PLAYED_FLAG") == "Y" and str(p.get("TO_YEAR", "0")).isdigit()
             and int(p["TO_YEAR"]) >= FIRST_SEASON]
     print(f"{len(pool)} players played from {FIRST_SEASON}-{str(FIRST_SEASON + 1)[-2:]} on.\n")
 
-    players, t0 = [], time.time()
+    players, skipped, t0 = [], [], time.time()
     for k, p in enumerate(pool, 1):
-        rec = build_player(p)
+        try:
+            rec = build_player(p)
+        except BadResponse:
+            skipped.append((p["PERSON_ID"], p["DISPLAY_FIRST_LAST"]))
+            rec = None
         if rec:
             players.append(rec)
         if k % 25 == 0 or k == len(pool):
@@ -255,6 +299,12 @@ def main():
     OUT.write_text(json.dumps(players, separators=(",", ":"), ensure_ascii=False))
     size = OUT.stat().st_size / 1e6
     print(f"\nDone. {len(players)} players written to {OUT} ({size:.1f} MB).")
+    if skipped:
+        print(f"\nSkipped {len(skipped)} players because NBA.com sent unusable data:")
+        for pid, name in skipped:
+            print(f"  {pid}  {name}")
+        print("Check them on nba.com/stats/player/<id>. To retry one, delete "
+              "cache/*_<id>.json and rerun.")
 
 
 if __name__ == "__main__":
