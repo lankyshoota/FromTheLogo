@@ -1,0 +1,16 @@
+# Runs the rarity sanity test whenever the player data or the rarity/prompt code changes.
+# Stars on prompts they're obvious for must stay Copper/Silver; deep cuts must reach Refractor/1 of 1.
+name: Rarity sanity test
+on:
+  push:
+    paths: ['players.json', 'rarity.js', 'prompts.js', 'test_rarity.js']
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node test_rarity.js

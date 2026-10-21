@@ -82,14 +82,22 @@ details.how p{margin:.6em 0 0;color:var(--muted);max-width:60ch}
 .card .pct{font:600 10px var(--mono)}
 .card.flip{animation:flip .55s cubic-bezier(.2,.8,.2,1)}
 @keyframes flip{from{transform:perspective(600px) rotateY(90deg) scale(.9)}to{transform:none}}
-.t-base{background:linear-gradient(160deg,#ddd6c9,#a8a093);color:#2a241c}
-.t-insert{background:linear-gradient(160deg,#4d7fe0,#1d377d);color:#fff}
-.t-refr{background:conic-gradient(from 200deg at 30% 30%,#ff8a8a,#ffd36e,#8ff0a4,#7cc8ff,#c69bff,#ff8a8a);color:#1d1424}
-.t-refr::before{content:"";position:absolute;inset:0;background:linear-gradient(160deg,rgba(255,255,255,.55),rgba(255,255,255,.1) 60%);mix-blend-mode:soft-light}
-.t-num{background:linear-gradient(150deg,#f4f6fa,#b9c0cc 45%,#6f7684);color:#1b1e26}
-.t-gold{background:linear-gradient(150deg,#fbe6a4,#e2b04a 45%,#9e6f1c);color:#2a1a04}
-.t-one{background:#0d0b10;color:#f6e3a8;box-shadow:inset 0 0 0 1.5px #e8b84a}
-.t-one::before{content:"";position:absolute;inset:-40%;background:conic-gradient(from 0deg,transparent,rgba(232,184,74,.35),transparent 30%,rgba(140,200,255,.25),transparent 60%);animation:spin 6s linear infinite}
+/* tiers, worst to best: matte copper, brushed silver, gold foil, emerald holo, rainbow refractor, 1 of 1 */
+.t-copper{background:radial-gradient(120% 90% at 25% 15%,#c58a62,#9a5e3c 55%,#6f3f25);color:#fff1e6}
+.t-silver{background:repeating-linear-gradient(90deg,rgba(255,255,255,.18) 0 1px,rgba(0,0,0,.05) 1px 2px,transparent 2px 4px),linear-gradient(160deg,#f1f3f6,#bcc3cd 48%,#8a929e);color:#1c2029}
+.t-gold{background:linear-gradient(150deg,#fff0b8,#f0c45a 30%,#c8902e 62%,#f6d97f);color:#2a1a04}
+.t-gold::before{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.75) 48%,transparent 60%);background-size:260% 100%;background-position:130% 0;animation:sweep 3.4s ease-in-out infinite}
+.t-emerald{background:linear-gradient(150deg,#0e4a30,#1d9a62 45%,#0b3a25);color:#eafff4}
+.t-emerald::before{content:"";position:absolute;inset:-60%;background:conic-gradient(from 0deg,transparent,rgba(130,255,200,.4),rgba(90,200,255,.28),transparent 45%,rgba(210,255,140,.3),transparent 75%);mix-blend-mode:screen;animation:spin 6s linear infinite}
+.t-refr{background:linear-gradient(90deg,#ff6b6b,#ffb36e,#ffe66e,#8ff0a4,#6ec6ff,#a48bff,#ff7ad9,#ff6b6b);background-size:200% 100%;animation:rainbow 6s linear infinite;color:#1d1424}
+.t-refr::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,rgba(255,255,255,.35) 0 2px,transparent 2px 7px),linear-gradient(160deg,rgba(255,255,255,.5),rgba(255,255,255,.05) 60%);mix-blend-mode:soft-light}
+.t-one{background:#0d0b10;color:#f6e3a8;box-shadow:inset 0 0 0 1.5px #e8b84a,0 0 10px rgba(232,184,74,.45);animation:glow 2.6s ease-in-out infinite alternate}
+.t-one::before{content:"";position:absolute;inset:-40%;background:conic-gradient(from 0deg,transparent,rgba(232,184,74,.4),transparent 30%,rgba(140,200,255,.25),transparent 60%);animation:spin 6s linear infinite}
+.card.t-one.flip{animation:flip-one 1.2s cubic-bezier(.2,.8,.2,1),glow 2.6s 1.2s ease-in-out infinite alternate}
+@keyframes sweep{from{background-position:130% 0}to{background-position:-60% 0}}
+@keyframes rainbow{from{background-position:0 0}to{background-position:-200% 0}}
+@keyframes glow{from{box-shadow:inset 0 0 0 1.5px #e8b84a,0 0 6px rgba(232,184,74,.35)}to{box-shadow:inset 0 0 0 1.5px #ffe7a0,0 0 18px rgba(232,184,74,.8)}}
+@keyframes flip-one{0%{transform:perspective(600px) rotateY(540deg) scale(.5);filter:brightness(2.4)}55%{transform:perspective(600px) rotateY(-14deg) scale(1.15);filter:brightness(1.4)}100%{transform:none;filter:none}}
 .card > *{position:relative}
 .t-blank{background:repeating-linear-gradient(135deg,rgba(217,104,92,.18) 0 6px,transparent 6px 12px);border:1.5px solid rgba(217,104,92,.5);color:var(--miss);align-items:center;justify-content:center;text-align:center}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -197,7 +205,7 @@ body[data-view="stats"] .g{display:none}
 .hist .row7{font-size:15px;letter-spacing:.06em}
 .hist .tag{font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:right}
 @media (max-width:420px){.sleeve{grid-template-columns:70px 1fr}.card{width:70px}.prompt{font-size:20px}}
-@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
@@ -233,7 +241,7 @@ body[data-view="stats"] .g{display:none}
     <p>Every point moves your shooter one foot further from the rim. A 100-point pull sends him back 100 feet.</p>
     <p>One prompt at a time with a 20-second clock. Three tries per prompt; run out of time or tries and it's a brick. Each player can only be used once per pack. Franchise history counts: Sonics = Thunder, Bullets = Wizards, Vancouver = Grizzlies, New Jersey = Nets.</p>
     <div class="ladder">
-      <span class="t-base">Base · 25%+ · 10</span><span class="t-insert">Insert · 10–25% · 25</span><span class="t-refr" style="position:relative">Refractor · 5–10% · 40</span><span class="t-num">/99 · 2–5% · 60</span><span class="t-gold">Gold /10 · 0.5–2% · 80</span><span class="t-one" style="position:relative;overflow:hidden">1 of 1 · under 0.5% · 100</span>
+      <span class="t-copper">Copper · 25%+ · 10</span><span class="t-silver">Silver · 10–25% · 25</span><span class="t-gold" style="position:relative;overflow:hidden"><span style="position:relative">Gold · 5–10% · 40</span></span><span class="t-emerald" style="position:relative;overflow:hidden"><span style="position:relative">Emerald · 2–5% · 60</span></span><span class="t-refr" style="position:relative"><span style="position:relative">Refractor · 0.5–2% · 80</span></span><span class="t-one" style="position:relative;overflow:hidden"><span style="position:relative">1 of 1 · under 0.5% · 100</span></span>
     </div>
   </details>
 
@@ -242,6 +250,7 @@ body[data-view="stats"] .g{display:none}
 
 <dialog class="sheet" id="sheet"><div id="sheetBody"></div></dialog>
 
+<script src="rarity.js"></script>
 <script src="prompts.js"></script>
 <script>
 /* Player database. players.json is built by build_players.py; until it exists the
@@ -260,7 +269,8 @@ async function loadPlayers(){
     } catch (e) {}
   }
   if (!PLAYERS.length) throw new Error('no player data');
-  GEN = FTLPrompts.create(PLAYERS);
+  RM = FTLRarity.create(PLAYERS);
+  GEN = FTLPrompts.create(PLAYERS, { rarity: RM });
   for (const p of PLAYERS) {
     p.g = p.g || ''; p.k = norm(p.n); BY_ID.set(p.id, p);
     // same name, different players (two Larry Johnsons, etc.) share one entry
@@ -272,7 +282,7 @@ async function loadPlayers(){
 /* Prompts come from prompts.js, built from players.json once it loads. A prompt's id
    describes it ("pair:LAL:MIA"), so PROMPTS[id] works for any id, including ones in
    packs stored before players.json changed. Unknown ids give undefined. */
-let GEN = null;
+let GEN = null, RM = null;
 const PROMPTS = new Proxy({}, { get: (_, id) => (GEN && typeof id === 'string' && GEN.get(id)) || undefined });
 
 /* seeded randomness */
@@ -280,28 +290,31 @@ function hash(s){let h=1779033703^s.length;for(let i=0;i<s.length;i++){h=Math.im
 function rng(seed){let a=hash(seed)();return ()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 
 /* simulated pick rates: stars get picked a lot, deep cuts rarely */
-const oddsCache = {};
+/* simulated pick rates (rarity.js): thousands of simulated fans per prompt, recalling and picking
+   players by recognition. Recomputed when the shared fame model changes. */
+let oddsCache = {};
 function odds(pid){
   if (oddsCache[pid]) return oddsCache[pid];
   const valid = PLAYERS.filter(PROMPTS[pid].test);
-  const w = valid.map(p => Math.pow(p.p, 3.4) * (0.6 + 0.8 * rng(pid + p.n)()));
-  const sum = w.reduce((a,b)=>a+b,0);
-  const list = valid.map((p,i) => ({ id:p.id, n:p.n, pct: w[i]/sum*100 })).sort((a,b)=>b.pct-a.pct);
+  const share = RM.sim(valid, pid);
+  const list = valid.map(p => ({ id:p.id, n:p.n, pct: 100 * share.get(p.id) })).sort((a,b)=>b.pct-a.pct);
   return oddsCache[pid] = { list, map: new Map(list.map(x=>[x.id,x.pct])) };
 }
 /* Six tiers by pick rate. Each tier pays a flat value, and every point is a foot back. */
 const TIERS = [
-  { min:25,  id:'base', cls:'t-base',   name:'Base',         short:'Base',  pts:10,  emoji:'⬜', range:'25%+' },
-  { min:10,  id:'ins',  cls:'t-insert', name:'Insert',       short:'Insert',pts:25,  emoji:'🟦', range:'10–25%' },
-  { min:5,   id:'refr', cls:'t-refr',   name:'Refractor',    short:'Refr',  pts:40,  emoji:'🌈', range:'5–10%' },
-  { min:2,   id:'num',  cls:'t-num',    name:'Numbered /99', short:'/99',   pts:60,  emoji:'🥈', range:'2–5%' },
-  { min:0.5, id:'gold', cls:'t-gold',   name:'Gold /10',     short:'/10',   pts:80,  emoji:'🥇', range:'0.5–2%' },
-  { min:0,   id:'one',  cls:'t-one',    name:'1 of 1',       short:'1/1',   pts:100, emoji:'💎', range:'under 0.5%' },
+  { min:25,  id:'copper',  cls:'t-copper',  name:'Copper',    short:'Copper',  pts:10,  emoji:'🟫', range:'25%+' },
+  { min:10,  id:'silver',  cls:'t-silver',  name:'Silver',    short:'Silver',  pts:25,  emoji:'⬜', range:'10–25%' },
+  { min:5,   id:'gold',    cls:'t-gold',    name:'Gold',      short:'Gold',    pts:40,  emoji:'🟨', range:'5–10%' },
+  { min:2,   id:'emerald', cls:'t-emerald', name:'Emerald',   short:'Emerald', pts:60,  emoji:'🟩', range:'2–5%' },
+  { min:0.5, id:'refr',    cls:'t-refr',    name:'Refractor', short:'Refr',    pts:80,  emoji:'🌈', range:'0.5–2%' },
+  { min:0,   id:'one',     cls:'t-one',     name:'1 of 1',    short:'1/1',     pts:100, emoji:'💎', range:'under 0.5%' },
 ];
+/* saved packs from before the rename used other tier ids (and "gold" meant the 80-point tier) */
+const OLD_TIERS = { base:'copper', ins:'silver', refr:'gold', num:'emerald', gold:'refr', one:'one' };
 const tierOf = pct => TIERS.find(t => pct >= t.min);
 const pointsOf = pct => tierOf(pct).pts;
 const fmtPct = p => p < 1 ? p.toFixed(1) + '%' : Math.round(p) + '%';
-function serial(t, name){ const h = hash(name)(); if(t.id==='one') return '1/1'; if(t.id==='gold') return (1 + h % 10) + '/10'; if(t.id==='num') return String(1 + h % 99).padStart(2,'0') + '/99'; return ''; }
+function serial(){ return ''; }   // tier names say it all now ("1 of 1")
 
 /* dates */
 function localKey(d=new Date()){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
@@ -313,14 +326,18 @@ function buildPack(seed){
   return seed.startsWith('daily-') ? GEN.daily(seed.slice(6)) : GEN.random(rng(seed));
 }
 function freshState(mode, seed){
-  return { mode, seed, date: localKey(), started:false, prompts: buildPack(seed), slots: Array.from({length:7}, () => ({ status:'open', strikes:0 })), active:0 };
+  return { mode, seed, tv:2, date: localKey(), started:false, prompts: buildPack(seed), slots: Array.from({length:7}, () => ({ status:'open', strikes:0 })), active:0 };
 }
 /* saved packs are per user: fromthelogo:<user id>:<date> ("local" when offline with no user) */
 const storeKey = (date, uid = user?.id || 'local') => `fromthelogo:${uid}:${date}`;
 function load(date = localKey()){
   try {
     const s = JSON.parse(localStorage.getItem(storeKey(date)));
-    if (s && s.prompts && s.prompts.length === 7 && s.prompts.every(id => PROMPTS[id])) { s.date ||= date; return s; }
+    if (s && s.prompts && s.prompts.length === 7 && s.prompts.every(id => PROMPTS[id])) {
+      s.date ||= date;
+      if (!s.tv) { s.slots.forEach(x => { if (x.tier) x.tier = OLD_TIERS[x.tier] || x.tier; }); s.tv = 2; }
+      return s;
+    }
   } catch(e){}
   return null;
 }
@@ -330,7 +347,7 @@ function save(st = state){ if (st.mode !== 'daily') return; try { localStorage.s
 const SB_URL = 'https://irtsjiluvpbxgxvteots.supabase.co';
 const SB_KEY = 'sb_publishable_fpOzn7FpnH4-OnC1PN5jVQ_6n75KR6K';   // publishable key: meant to be public
 const SB_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js';
-const COLD = 50;   // answers a prompt needs before its pick rates are fully real (same as schema.sql)
+const K_PRIOR = FTLRarity.K;   // real picks take over from the simulation: (picks + K * sim) / (total + K), same as schema.sql
 async function rpc(fn, args = {}, ms = 4000){
   if (!sb) throw new Error('offline');
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
@@ -361,13 +378,12 @@ function loadRates(date, rows){
   for (let i = 0; i < 7; i++) REAL[date + '|' + i] = { total:0, counts:new Map() };
   for (const r of rows || []) { const e = REAL[date + '|' + r.prompt_idx]; e.total += r.picks; e.counts.set(r.player_id, r.picks); }
 }
-/* a player's pick rate: real picks blended with the simulated estimate until the prompt has COLD answers */
+/* a player's pick rate: Bayesian blend of real picks and the simulated estimate (worth K_PRIOR picks) */
 function rateOf(st, idx, playerId){
   const sim = odds(st.prompts[idx]).map.get(playerId) ?? 0;
   const r = st.mode === 'daily' && st.online && REAL[st.date + '|' + idx];
   if (!r || !r.total) return sim;
-  const w = Math.min(1, r.total / COLD);
-  return w * 100 * (r.counts.get(playerId) || 0) / r.total + (1 - w) * sim;
+  return FTLRarity.blend(r.counts.get(playerId) || 0, r.total, sim / 100);
 }
 function rateList(st, idx){
   return odds(st.prompts[idx]).list.map(x => ({ n:x.n, pct:rateOf(st, idx, x.id) })).sort((a,b) => b.pct - a.pct);
@@ -425,6 +441,48 @@ async function settlePast(){
   const { live, total } = latest.settled;
   note(`Your ${day} pack settled: <strong>${total}</strong> final` + (total !== live ? ` (live score was ${live})` : ' (same as live)'));
 }
+/* ---------- shared fame model: the rarity weights correct themselves from real picks ----------
+   Supabase keeps one model per settled day. The first player after a day settles computes the
+   next model from that day's picks (RM.update) and proposes it; the server keeps the first valid
+   one, so everyone scores with the same weights. */
+const addDays = (key, n) => { const [y,m,d] = key.split('-').map(Number); return new Date(Date.UTC(y, m-1, d+n)).toISOString().slice(0, 10); };
+function useModel(m){ RM.setModel(m); oddsCache = {}; }
+async function loadModel(){
+  if (!sb) return null;
+  try {
+    const row = await rpc('get_fame_model', {}, 3000);
+    if (row && FTLRarity.valid(row.model)) useModel(row.model);
+    return row;
+  } catch(e){ return null; }
+}
+function trainingDay(day){
+  return (day.prompts || []).map((pr, i) => {
+    const def = PROMPTS[pr.id];
+    if (!def) return null;
+    return { seed: pr.id, answers: PLAYERS.filter(def.test),
+             counts: new Map((day.picks || []).filter(x => x.prompt_idx === i).map(x => [x.player_id, x.picks])) };
+  }).filter(Boolean);
+}
+async function catchUpModel(row){
+  if (!sb || !user || !row) return;
+  let m = FTLRarity.valid(row.model) ? row.model : FTLRarity.DEFAULT_MODEL;
+  let d = row.model_date || (row.first_pack && addDays(row.first_pack, -1));
+  if (!d) return;
+  try {
+    for (let i = 0; i < 7; i++) {                       // at most a week per visit
+      const next = addDays(d, 1);
+      if (Date.now() < closesAt(next)) break;           // not settled yet
+      const day = await rpc('get_closed_day', { p_date:next }, 8000);
+      RM.setModel(m);
+      const proposed = day ? RM.update(trainingDay(day)) : m;
+      const stored = await rpc('propose_fame_model', { p_date:next, p_model:proposed }, 8000);
+      m = FTLRarity.valid(stored) ? stored : proposed;
+      d = next;
+    }
+  } catch(e){ console.warn('fame model update skipped', e); }
+  useModel(m);
+}
+
 function note(html, bad = false){ const n = $('settledNote'); n.innerHTML = html; n.classList.toggle('bad', bad); n.hidden = false; }
 
 /* one daily pack per user: if this account already played today on another device, show that */
@@ -1290,10 +1348,11 @@ $('tabDaily').addEventListener('click', async () => {
   if (sb && !user) await sheetWelcome();
   await afterLogin();
   renderAccount();
+  const modelRow = await loadModel();
   state = await openDaily();
   Stage.set(distOf(totalPts()));
   render();
-  flushUnsent(state); sendScore(state); settlePast();
+  flushUnsent(state); sendScore(state); settlePast(); catchUpModel(modelRow);
 })();
 </script>
 

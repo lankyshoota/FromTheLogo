@@ -9,8 +9,8 @@
 -- Everyone who plays is a Supabase Auth user: guests are anonymous users, and
 -- signing up later turns that same user into a real account.
 --
--- Keep in sync with index.html: the tier cutoffs and points in pick_scores(),
--- and the 50-answer cold start (COLD).
+-- Keep in sync with index.html / rarity.js: the tier ids, cutoffs and points in pick_scores(),
+-- the Bayesian prior K = 100, and the fame model bounds in propose_fame_model().
 
 -- ---------------------------------------------------------------- tables
 
@@ -72,17 +72,26 @@ create table if not exists transfer_tokens (
   created_at timestamptz not null default now()
 );
 
+-- The rarity model (rarity.js) for each settled day: recognition weights plus how fans
+-- recall and pick. The first player after a day settles proposes the next one.
+create table if not exists fame_models (
+  model_date date primary key,          -- the settled day this model learned from
+  model      jsonb not null,
+  created_at timestamptz not null default now()
+);
+
 -- Lock the tables down: only the functions below get in.
 alter table daily_packs     enable row level security;
 alter table profiles        enable row level security;
 alter table picks           enable row level security;
 alter table submissions     enable row level security;
 alter table transfer_tokens enable row level security;
+alter table fame_models     enable row level security;
 drop policy if exists "read packs"   on daily_packs;
 drop policy if exists "submit picks" on picks;
 drop policy if exists "read picks"   on picks;
 drop view if exists pick_rates;
-revoke all on daily_packs, profiles, picks, submissions, transfer_tokens from anon, authenticated;
+revoke all on daily_packs, profiles, picks, submissions, transfer_tokens, fame_models from anon, authenticated;
 
 -- ---------------------------------------------------------------- helpers
 
@@ -121,8 +130,9 @@ as $$
   select coalesce((select is_anonymous from auth.users where id = auth.uid()), true);
 $$;
 
--- Every pick by one user, scored: rate = w * real + (1 - w) * simulated,
--- w = min(1, answers / 50). Live while the date is open, final after.
+-- Every pick by one user, scored: rate = (picks + K * simulated share) / (all picks + K),
+-- K = 100 (sim_pct is the simulated % the game sent with the pick). Live while the date is
+-- open, final after. Tiers: copper 25%+, silver 10-25, gold 5-10, emerald 2-5, refr 0.5-2, one.
 create or replace function pick_scores(p_user uuid)
 returns table (pack_date date, prompt_idx smallint, player_id bigint,
                pct real, tier text, pts int, final boolean)
@@ -130,8 +140,8 @@ language sql stable security definer
 set search_path = public
 as $$
   select m.pack_date, m.prompt_idx, m.player_id, r.pct,
-         case when r.pct >= 25 then 'base' when r.pct >= 10 then 'ins' when r.pct >= 5 then 'refr'
-              when r.pct >= 2 then 'num' when r.pct >= 0.5 then 'gold' else 'one' end,
+         case when r.pct >= 25 then 'copper' when r.pct >= 10 then 'silver' when r.pct >= 5 then 'gold'
+              when r.pct >= 2 then 'emerald' when r.pct >= 0.5 then 'refr' else 'one' end,
          case when r.pct >= 25 then 10 when r.pct >= 10 then 25 when r.pct >= 5 then 40
               when r.pct >= 2 then 60 when r.pct >= 0.5 then 80 else 100 end,
          not pack_date_open(m.pack_date)
@@ -140,8 +150,7 @@ as $$
     select count(*) as total, count(*) filter (where o.player_id = m.player_id) as same
     from picks o where o.pack_date = m.pack_date and o.prompt_idx = m.prompt_idx
   ) c
-  cross join lateral (select least(1, c.total / 50.0) as w) w
-  cross join lateral (select (w.w * 100 * c.same / c.total + (1 - w.w) * m.sim_pct)::real as pct) r
+  cross join lateral (select (100.0 * (c.same + m.sim_pct) / (c.total + 100))::real as pct) r
   where m.user_id = p_user;
 $$;
 
@@ -379,13 +388,88 @@ as $$
     'best_score',     (select max(score) from packs),
     'best_ft',        (select greatest(2, max(score)) from packs),
     'total_ft',       coalesce((select sum(score) from packs), 0),
-    'tiers',          (select jsonb_object_agg(t, coalesce(n, 0)) from unnest(array['base','ins','refr','num','gold','one']) t
+    'tiers',          (select jsonb_object_agg(t, coalesce(n, 0)) from unnest(array['copper','silver','gold','emerald','refr','one']) t
                        left join (select tier, count(*) n from s group by tier) c on c.tier = t),
     'rarest',         (select to_jsonb(rarest) from rarest),
     'history',        coalesce((select jsonb_agg(jsonb_build_object('date', pack_date, 'score', score, 'final', final,
                                                                     'cards', coalesce(cards, '[]'::jsonb)) order by pack_date desc)
                                 from (select * from packs order by pack_date desc limit 100) h), '[]'::jsonb)
   );
+$$;
+
+-- ---------------------------------------------------------------- rarity model
+
+-- Latest model, plus the first pack date (where learning starts when there's no model yet).
+create or replace function get_fame_model()
+returns jsonb
+language sql stable security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'model_date', (select model_date from fame_models order by model_date desc limit 1),
+    'model',      (select model from fame_models order by model_date desc limit 1),
+    'first_pack', (select min(pack_date) from daily_packs));
+$$;
+
+-- A settled day's prompts and pick counts, to learn from. Nothing for days still open.
+create or replace function get_closed_day(p_date date)
+returns jsonb
+language sql stable security definer
+set search_path = public
+as $$
+  select case when pack_date_open(p_date) then null else jsonb_build_object(
+    'prompts', (select prompts from daily_packs where pack_date = p_date),
+    'picks', coalesce((select jsonb_agg(jsonb_build_object('prompt_idx', prompt_idx, 'player_id', player_id, 'picks', n))
+                       from (select prompt_idx, player_id, count(*)::int n from picks
+                             where pack_date = p_date group by prompt_idx, player_id) x), '[]'::jsonb)) end;
+$$;
+
+-- Store the model learned from a settled day. First valid proposal wins; returns the stored one.
+-- Valid = same shape and bounds as rarity.js, the day right after the latest stored model,
+-- and only a small step from it (weights +-0.06, pull +-16%, other settings unchanged).
+create or replace function propose_fame_model(p_date date, p_model jsonb)
+returns jsonb
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  prev jsonb;
+  prev_date date;
+  existing jsonb;
+  f text;
+begin
+  perform require_user();
+  select model into existing from fame_models where model_date = p_date;
+  if existing is not null then
+    return existing;
+  end if;
+  if pack_date_open(p_date) then
+    raise exception 'day % has not settled', p_date;
+  end if;
+  select model, model_date into prev, prev_date from fame_models order by model_date desc limit 1;
+  if prev_date is not null and p_date <> prev_date + 1 then
+    raise exception 'next model must be for %', prev_date + 1;
+  end if;
+  if prev is null then   -- rarity.js DEFAULT_MODEL
+    prev := '{"v":1,"w":{"views":0.6,"playoffs":0.12,"seasons":0.08,"awards":0.12,"recency":0.08},
+              "center":0.9,"steep":20,"spread":0.1,"pull":12}';
+  end if;
+  foreach f in array array['views','playoffs','seasons','awards','recency'] loop
+    if jsonb_typeof(p_model -> 'w' -> f) <> 'number'
+       or (p_model -> 'w' ->> f)::numeric not between 0.01 and 1
+       or abs((p_model -> 'w' ->> f)::numeric - (prev -> 'w' ->> f)::numeric) > 0.06 then
+      raise exception 'bad weight %', f;
+    end if;
+  end loop;
+  if jsonb_typeof(p_model -> 'pull') <> 'number' or (p_model ->> 'pull')::numeric not between 1 and 20
+     or abs((p_model ->> 'pull')::numeric / (prev ->> 'pull')::numeric - 1) > 0.16
+     or p_model -> 'center' <> prev -> 'center' or p_model -> 'steep' <> prev -> 'steep'
+     or p_model -> 'spread' <> prev -> 'spread' then
+    raise exception 'bad model settings';
+  end if;
+  insert into fame_models (model_date, model) values (p_date, p_model) on conflict (model_date) do nothing;
+  return (select model from fame_models where model_date = p_date);
+end;
 $$;
 
 -- ---------------------------------------------------------------- permissions
@@ -400,7 +484,8 @@ begin
     'get_or_create_pack(date, jsonb)', 'submit_pick(date, smallint, bigint, real)',
     'get_pick_rates(date)', 'submit_score(date, smallint)', 'get_my_day(date)',
     'username_available(text)', 'set_username(text)', 'get_profile()',
-    'start_transfer()', 'claim_transfer(uuid)', 'get_my_stats(date)']
+    'start_transfer()', 'claim_transfer(uuid)', 'get_my_stats(date)',
+    'get_fame_model()', 'get_closed_day(date)', 'propose_fame_model(date, jsonb)']
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f);
   end loop;
@@ -416,3 +501,6 @@ grant execute on function get_profile()                            to authentica
 grant execute on function start_transfer()                         to authenticated;
 grant execute on function claim_transfer(uuid)                     to authenticated;
 grant execute on function get_my_stats(date)                       to authenticated;
+grant execute on function get_fame_model()                         to anon, authenticated;
+grant execute on function get_closed_day(date)                     to anon, authenticated;
+grant execute on function propose_fame_model(date, jsonb)          to authenticated;

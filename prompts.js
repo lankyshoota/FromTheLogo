@@ -34,11 +34,12 @@
 
   // A prompt is used only if it has at least MIN_ANSWERS valid players, MIN_DEEP deep cuts
   // and MIN_KNOWN names most fans would know (popularity 6+), so it's gettable.
-  // A deep cut is an answer the game's simulated pick rates (popularity ^ 3.4, the same
-  // weights index.html uses before real picks exist) would give under DEEP_SHARE of picks:
-  // Gold /10 or 1 of 1 territory. Relative to the other answers, so a 1970s 20-PPG King is
-  // a deep cut next to Webber and Fox even though he was a good player.
-  const MIN_ANSWERS = 10, MIN_DEEP = 3, DEEP_SHARE = 0.02, MIN_KNOWN = 2, SIM_POWER = 3.4;
+  // A deep cut is an answer the rarity model (rarity.js, default weights) expects under
+  // DEEP_SHARE of picks: Refractor or 1 of 1 territory. Relative to the other answers, so a
+  // 1970s 20-PPG King is a deep cut next to Webber and Fox even though he was a good player.
+  // Well-known = top KNOWN_PCT of all players by recognition. Without rarity.js (old callers)
+  // it falls back to the popularity field p.
+  const MIN_ANSWERS = 10, MIN_DEEP = 3, DEEP_SHARE = 0.02, MIN_KNOWN = 2, SIM_POWER = 3.4, KNOWN_PCT = 0.84;
   const LEVELS = { easy: 20, medium: 8 };           // known answers: 20+ easy, 8-19 medium, 2-7 hard
   const PACK = ['easy', 'easy', 'medium', 'medium', 'medium', 'hard', 'hard'];
   const CYCLE = 28;                                   // days before a prompt can come back
@@ -284,9 +285,15 @@
         if (pr.college !== null) pool = (info.byCol[pr.college] || []).filter(p => pool === players || pool.includes(p));
         const ans = pool.filter(pr.test);
         pr.answers = ans.length;
-        const total = ans.reduce((a, p) => a + Math.pow(p.p, SIM_POWER), 0);
-        pr.deep = ans.filter(p => Math.pow(p.p, SIM_POWER) / total < DEEP_SHARE).length;
-        pr.known = ans.filter(p => p.p >= 6).length;
+        if (opts.rarity) {
+          const share = opts.rarity.quick(ans);
+          pr.deep = ans.filter(p => share.get(p.id) < DEEP_SHARE).length;
+          pr.known = ans.filter(p => p._rp0 >= KNOWN_PCT).length;
+        } else {
+          const total = ans.reduce((a, p) => a + Math.pow(p.p, SIM_POWER), 0);
+          pr.deep = ans.filter(p => Math.pow(p.p, SIM_POWER) / total < DEEP_SHARE).length;
+          pr.known = ans.filter(p => p.p >= 6).length;
+        }
         pr.level = level(pr.known);
         pr.ok = pr.answers >= MIN_ANSWERS && pr.deep >= MIN_DEEP && pr.known >= MIN_KNOWN
           && (!pr.award || info.awardsReady);

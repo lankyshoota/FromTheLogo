@@ -23,12 +23,33 @@ steps and check in before big changes.
   Loads `players.json` at startup (falls back to `players.sample.json`, the old hand-typed
   starter list, if it's missing). Picks are tracked by player id, since some names are shared
   (two Larry Johnsons); typing a shared name counts if any player with it fits.
+- `rarity.js` — rarity model (browser + Node). Recognition (0-1) = weighted mix of feature
+  scales: log Wikipedia views (fame, most weight), log playoff games, seasons, log awards (rings
+  until awards arrive), recency; each scaled 0-1 between its 1st and 99.9th percentile (log scales,
+  not percentiles, so a 10x more viewed player is clearly more recognizable). Simulated fans (4,000
+  per prompt, seeded by prompt id): each has a knowledge shift and a deep-cut appetite, recalls
+  each valid answer with sigmoid(steep * (recognition - center + shift)) (center = 90th
+  percentile), then picks among recalled with weight exp(pull * recognition) (pull flips negative
+  for deep-cut hunters). Share of picks = starting pick %. update(): one self-correcting step
+  from a settled day (softmax gradient on the weights, pull nudged by how bunched real picks
+  were; steps capped). Default model: views .6, playoffs .12, seasons .08, awards .12, recency .08,
+  center .9, steep 20, spread .1, pull 12.
+- `fetch_fame.py` — run on Lanky's Mac. Wikidata (P3647 = NBA.com id) maps ids to English
+  Wikipedia articles; the rest via Wikipedia search (title must be the name, about basketball).
+  Sums 12 months of user page views per article and writes players.json "fame". Cached in
+  cache/fame/ (refreshes after 30 days, --refresh for all), ~5 req/s, proper User-Agent.
+- `test_rarity.js` — sanity test, also run by .github/workflows/rarity.yml on every push that
+  touches players.json/rarity.js/prompts.js. On prompts with 25+ answers: listed stars and
+  well-known role players must be Copper/Silver when among the 3 most recognizable answers and
+  never Refractor/1 of 1; the 3 least recognizable answers must be Refractor/1 of 1. Only warns
+  until players.json has Wikipedia views. Prints 3 example prompts.
 - `prompts.js` — prompt generator, loaded by index.html (also runs in Node for tests). Builds
   every prompt the data supports (team pairs, team + decade, team stat seasons, titles with a
   team, undrafted/2nd-round/international/7-footer + team, college (+ team), country, draft pick
   and class, rings, career length, games, playoff games, career/season stats; award prompts too,
   but only once ~all players have "ad"). Keeps a prompt if it has 10+ answers, 3+ deep cuts
-  (answers the simulated pick rates put under 2%) and 2+ well-known answers (popularity 6+).
+  (answers rarity.js's quick estimate puts under 2%) and 2+ well-known answers (top 16% by
+  recognition under the default model, so packs don't shift with the daily model).
   Difficulty by well-known answers: 20+ easy, 8-19 medium, 2-7 hard. Daily pack = 2 easy,
   3 medium, 2 hard, easy to hard; max one prompt per family (two team pairs allowed), no team
   twice. Prompt ids describe the prompt ("pair:LAL:MIA", "ppg:SAC:20", "col:Duke") so stored
@@ -47,7 +68,8 @@ steps and check in before big changes.
   round, pick] or null = undrafted), c (country), pos, col (college, "" if none), ht (inches),
   wt (lbs), bd (birthdate "YYYY-MM-DD"), num ([[team, jersey], ...] from season rosters),
   from, to, gp, ppg, p (popularity 1-10), ad (1 = awards checked; only on players whose awards
-  have been fetched, so award prompts can wait until nearly everyone has it).
+  have been fetched, so award prompts can wait until nearly everyone has it), fame (Wikipedia
+  page views in the last 12 months, from fetch_fame.py; 0 = no article).
   Run on Lanky's own computer (NBA.com isn't reachable from the cloud session), then commit
   players.json.
 - `build_players_bulk.py` — the main builder now (per-player runs got blocked every ~25 players).
@@ -81,7 +103,14 @@ steps and check in before big changes.
   on Earth: until 00:00 UTC two days later. After that its picks are final.
 - **Live score:** each daily pick is sent right away; submit_pick returns that player's count
   and the prompt total, and the pick is scored immediately.
-- **Cold start:** rate = w * real + (1 - w) * simulated, w = min(1, answers / 50).
+- **Pick rate:** Bayesian blend: rate = (picks + K * simulated share) / (all picks + K), K = 100.
+  The simulated share comes from rarity.js; each pick stores it (sim_pct) so the server scores the
+  same way (pick_scores).
+- **Fame model (self-correcting):** fame_models table, one model per settled day. On load the
+  game gets the latest (get_fame_model); the first player after a day settles computes the next
+  one from that day's picks (get_closed_day + rarity.js update) and proposes it
+  (propose_fame_model: first valid one wins; must be the next day, within bounds, weights within
+  0.06 and pull within 16% of the previous, other settings unchanged).
 - **Settling:** once a date closes, the game re-scores that pack from get_pick_rates on the
   player's next visit and shows "Your <date> pack settled: X final (live score was Y)".
 - **One per user:** one pick per prompt per user and one submission per user per day (unique
@@ -121,16 +150,18 @@ steps and check in before big changes.
   New Jersey = Nets, Vancouver = Grizzlies, Bullets = Wizards, etc.).
 
 ## Scoring (decided)
-Six card tiers by pick rate, flat points, all ending in 0 or 5:
+Six card tiers by pick rate, flat points, all ending in 0 or 5 (renamed by Lanky; same ranges):
 
-| Tier | Picked by | Points |
-|---|---|---|
-| Base | 25%+ | 10 |
-| Insert | 10–25% | 25 |
-| Refractor | 5–10% | 40 |
-| Numbered /99 | 2–5% | 60 |
-| Gold /10 | 0.5–2% | 80 |
-| 1 of 1 | under 0.5% | 100 |
+| Tier | Picked by | Points | Emoji | id |
+|---|---|---|---|---|
+| Copper | 25%+ | 10 | 🟫 | copper |
+| Silver | 10–25% | 25 | ⬜ | silver |
+| Gold | 5–10% | 40 | 🟨 | gold |
+| Emerald | 2–5% | 60 | 🟩 | emerald |
+| Refractor | 0.5–2% | 80 | 🌈 | refr |
+| 1 of 1 | under 0.5% | 100 | 💎 | one |
+
+Old saved packs (before the rename) used base/ins/refr/num/gold/one; index.html maps them on load.
 
 - Ranges are a first guess — tune them once real pick data exists. Points stay as is.
 - **1 point = 1 foot.** The shooter's distance from the rim = total points (min 2 ft layup).
@@ -139,8 +170,10 @@ Six card tiers by pick rate, flat points, all ending in 0 or 5:
 
 ## Look
 Trading-card binder vibe: dark plum background, gold accent, Big Shoulders Display (headings),
-Barlow Semi Condensed (body), IBM Plex Mono (labels). Cards styled per tier (silver /99,
-gold /10, black-and-gold 1 of 1 with spinning shine). Canvas animation of the shooter on a
+Barlow Semi Condensed (body), IBM Plex Mono (labels). Cards get fancier with each tier: matte
+copper, brushed silver, gold foil with a shine sweep, green holo shimmer, animated rainbow
+refractor, black-and-gold 1 of 1 with spinning shine, glow and its own flip. Reduced motion turns
+every animation off (including ::before/::after). Canvas animation of the shooter on a
 wood court with crowd parallax.
 
 ## Roadmap

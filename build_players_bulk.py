@@ -328,6 +328,13 @@ def apply_cached_details(rec: dict, rings: int):
         rec["ad"] = 1
     else:
         rec.pop("ad", None)
+    # "fame": Wikipedia page views in the last 12 months (fetch_fame.py)
+    fame = bp.CACHE / "fame" / f"views_{pid}.json"
+    if fame.exists():
+        try:
+            rec["fame"] = int(json.loads(fame.read_text()).get("views") or 0)
+        except (ValueError, OSError):
+            pass
     info = cached(f"info_{pid}")
     if info:
         i = (bp.rows(info, "CommonPlayerInfo") or [{}])[0]
@@ -387,6 +394,8 @@ def finish(players: list[dict]) -> list[dict]:
         o = {k: r[k] for k in keys}
         if r.get("ad"):
             o["ad"] = 1
+        if r.get("fame") is not None:
+            o["fame"] = r["fame"]
         out.append(o)
     return sorted(out, key=lambda r: r["n"])
 
