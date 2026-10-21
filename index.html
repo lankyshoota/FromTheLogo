@@ -185,342 +185,33 @@ details.how p{margin:.6em 0 0;color:var(--muted);max-width:60ch}
     </div>
   </details>
 
-  <p class="foot">Prototype · starter database of ~230 players · pick rates simulated until the live backend is on</p>
+  <p class="foot" id="foot">Loading players…</p>
 </div>
 
 <script>
-const RAW = `LeBron James|CLE MIA LAL|10|CMA1
-Stephen Curry|GSW|10|CMA
-Kevin Durant|OKC GSW BKN PHX HOU|10|CMA
-Kobe Bryant|LAL|10|CMA
-Michael Jordan|CHI WAS|10|CMA
-Tim Duncan|SAS|9|CMA1
-Shaquille O'Neal|ORL LAL MIA PHX CLE BOS|9|CMA1
-Kevin Garnett|MIN BOS BKN|9|CMA
-Dirk Nowitzki|DAL|9|CMAI
-Dwyane Wade|MIA CHI CLE|9|CA
-Chris Paul|NOP LAC HOU OKC PHX GSW SAS|8|A
-Kawhi Leonard|SAS TOR LAC|9|CA
-Giannis Antetokounmpo|MIL|9|CMAI
-Nikola Jokic|DEN|9|CMAIR
-Luka Doncic|DAL LAL|9|AI
-James Harden|OKC HOU BKN PHI LAC|9|MA
-Russell Westbrook|OKC HOU WAS LAL LAC DEN SAC|8|MA
-Kyrie Irving|CLE BOS BKN DAL|8|CA1
-Anthony Davis|NOP LAL DAL|8|CA1
-Paul George|IND OKC LAC PHI|7|A
-Jimmy Butler|CHI MIN PHI MIA GSW|8|A
-Joel Embiid|PHI|8|MAI
-Damian Lillard|POR MIL|8|A
-Jayson Tatum|BOS|8|CA
-Jaylen Brown|BOS|7|CA
-Devin Booker|PHX|8|A
-Ja Morant|MEM|7|A
-Zion Williamson|NOP|6|A1
-Anthony Edwards|MIN|8|A1
-Shai Gilgeous-Alexander|LAC OKC|8|CMAI
-Victor Wembanyama|SAS|8|A1I
-Trae Young|ATL|7|A
-Donovan Mitchell|UTA CLE|7|A
-Karl-Anthony Towns|MIN NYK|7|A1
-Jalen Brunson|DAL NYK|7|AR
-Allen Iverson|PHI DEN DET MEM|8|MA1
-Carmelo Anthony|DEN NYK OKC HOU POR LAL|8|A
-Dwight Howard|ORL LAL HOU ATL CHA WAS PHI|7|CA1
-Vince Carter|TOR BKN ORL PHX DAL MEM SAC ATL|7|A
-Tracy McGrady|TOR ORL HOU NYK DET ATL SAS|6|A
-Paul Pierce|BOS BKN WAS LAC|7|CA
-Ray Allen|MIL OKC BOS MIA|7|CA
-Steve Nash|PHX DAL LAL|7|MAI
-Jason Kidd|DAL PHX BKN NYK|7|CA
-Tony Parker|SAS CHA|6|CAI
-Manu Ginobili|SAS|6|CAIR
-Pau Gasol|MEM LAL CHI SAS MIL|6|CAI
-Marc Gasol|MEM TOR LAL|5|CAIR
-Chris Bosh|TOR MIA|6|CA
-Klay Thompson|GSW DAL|7|CA
-Draymond Green|GSW|7|CAR
-Andre Iguodala|PHI DEN GSW MIA|5|CA
-Kyle Lowry|TOR HOU MEM MIA PHI|5|CA
-DeMar DeRozan|TOR SAS CHI SAC|6|A
-Kevin Love|MIN CLE MIA UTA|5|CA
-Blake Griffin|LAC DET BKN BOS|6|A1
-Derrick Rose|CHI NYK CLE MIN DET MEM|7|MA1
-Rajon Rondo|BOS DAL SAC CHI NOP LAL ATL LAC CLE|5|CA
-Al Horford|ATL BOS PHI OKC GSW|4|CA
-Rudy Gobert|UTA MIN|5|AI
-DeAndre Jordan|LAC DAL NYK BKN LAL PHI DEN NOP|4|AR
-Kemba Walker|CHA BOS NYK DAL|5|A
-Isaiah Thomas|SAC PHX BOS CLE LAL DEN WAS NOP DAL CHA|5|AR
-Gordon Hayward|UTA BOS CHA OKC|4|A
-Bradley Beal|WAS PHX LAC|5|A
-John Wall|WAS HOU LAC|6|A1
-Kyle Korver|PHI UTA CHI ATL CLE MIL|4|AR
-J.J. Redick|ORL MIL LAC PHI NOP DAL|4|
-Lou Williams|PHI ATL TOR LAL HOU LAC|4|R
-Jamal Crawford|CHI NYK GSW ATL POR LAC MIN PHX BKN|4|
-Jeremy Lin|GSW NYK HOU LAL CHA BKN ATL TOR|5|CR
-Nate Robinson|NYK BOS OKC GSW CHI DEN LAC NOP|4|
-Boris Diaw|ATL PHX CHA SAS UTA|3|CI
-Patty Mills|POR SAS BKN ATL MIA LAC|3|CIR
-Matthew Dellavedova|CLE MIL SAC|2|CIR
-Brian Scalabrine|BKN BOS CHI|3|CR
-Robert Horry|HOU PHX LAL SAS|5|C
-Derek Fisher|LAL GSW UTA OKC DAL|4|C
-Steve Kerr|PHX CLE ORL CHI SAS POR|4|CR
-Luc Longley|CHI PHX NYK MIN|2|CI
-Dennis Rodman|DET SAS CHI LAL DAL|7|CAR
-Scottie Pippen|CHI HOU POR|7|CA
-Hakeem Olajuwon|HOU TOR|7|CMA1I
-David Robinson|SAS|6|CMA1
-Charles Barkley|PHI PHX HOU|7|MA
-Karl Malone|UTA LAL|6|MA
-John Stockton|UTA|6|A
-Patrick Ewing|NYK OKC ORL|6|A1I
-Reggie Miller|IND|6|A
-Gary Payton|OKC MIL LAL BOS MIA|6|CA
-Alonzo Mourning|CHA MIA BKN|5|CA
-Grant Hill|DET ORL PHX LAC|5|A
-Penny Hardaway|ORL PHX NYK MIA|5|A
-Chris Webber|GSW WAS SAC PHI DET|5|A1
-Yao Ming|HOU|6|A1I
-Dikembe Mutombo|DEN ATL PHI BKN NYK HOU|5|AI
-Ben Wallace|WAS ORL DET CHI CLE|4|CAR
-Rasheed Wallace|WAS POR ATL DET BOS|4|CA
-Chauncey Billups|BOS TOR DEN MIN DET NYK LAC|4|CA
-Richard Hamilton|WAS DET CHI|3|CA
-Tayshaun Prince|DET MEM BOS MIN|3|C
-Antoine Walker|BOS DAL ATL MIA MEM MIN|4|CA
-Peja Stojakovic|SAC IND NOP TOR DAL|4|CAI
-Vlade Divac|LAL CHA SAC|4|AI
-Mike Bibby|MEM SAC ATL WAS NYK MIA|3|
-Jason Williams|SAC MEM MIA ORL|4|C
-Shawn Marion|PHX MIA TOR DAL CLE|4|CA
-Amar'e Stoudemire|PHX NYK DAL MIA|5|A
-Baron Davis|CHA NOP GSW LAC CLE NYK|4|A
-Elton Brand|CHI LAC PHI DAL ATL|4|A1
-Jermaine O'Neal|POR IND MIA TOR BOS PHX GSW|4|A
-Zach Randolph|POR NYK LAC MEM SAC|4|A
-Tony Allen|BOS MEM NOP|3|C
-Mike Conley|MEM UTA MIN|4|A
-Marcus Smart|BOS MEM WAS LAL|4|C
-Jrue Holiday|PHI NOP MIL BOS POR|5|CA
-Khris Middleton|MIL WAS|4|CAR
-Brook Lopez|BKN MIL LAC|4|CA
-Kyle Kuzma|LAL WAS MIL|3|C
-Alex Caruso|LAL CHI OKC|4|CR
-Austin Reaves|LAL|5|R
-Fred VanVleet|TOR HOU|4|CAR
-Pascal Siakam|TOR IND|5|CAI
-OG Anunoby|TOR NYK|4|CI
-Serge Ibaka|OKC ORL TOR LAC MIL|4|CI
-Jamal Murray|DEN|6|CI
-Aaron Gordon|ORL DEN|5|C
-Michael Porter Jr.|DEN BKN|5|C
-Kentavious Caldwell-Pope|DET LAL WAS DEN ORL MEM|4|C
-Bruce Brown|DET BKN DEN IND TOR NOP|3|CR
-Christian Braun|DEN|3|C
-Jalen Williams|OKC|5|CA
-Chet Holmgren|OKC|5|C
-Luguentz Dort|OKC|4|CIR
-Andrew Wiggins|MIN GSW MIA|5|CA1I
-Jordan Poole|GSW WAS NOP|4|C
-Kevon Looney|GSW NOP|3|C
-Gary Payton II|MIL LAL WAS POR GSW|2|CR
-Andrew Bogut|MIL GSW DAL CLE LAL|4|C1I
-Shaun Livingston|LAC MIA OKC WAS CHA MIL CLE BKN GSW|3|C
-David West|NOP IND SAS GSW|3|CA
-JaVale McGee|WAS DEN PHI DAL GSW LAL CLE PHX SAC|5|C
-Zaza Pachulia|ORL ATL MIL DAL GSW DET|3|CIR
-Mario Chalmers|MIA MEM|3|CR
-Shane Battier|HOU MEM MIA|4|C
-Udonis Haslem|MIA|4|CR
-Mike Miller|ORL MEM MIN WAS MIA CLE DEN|3|C
-Chris Andersen|DEN NOP MIA MEM CLE|3|CR
-Matt Bonner|TOR SAS|3|CR
-Boban Marjanovic|SAS DET LAC PHI DAL HOU|4|IR
-Tacko Fall|BOS CLE|3|IR
-Danny Green|CLE SAS TOR LAL PHI MEM|4|CR
-Lamar Odom|LAC MIA LAL DAL|5|C
-Metta World Peace|CHI IND SAC HOU LAL NYK|4|CA
-Andrew Bynum|LAL CLE IND|3|CA
-Trevor Ariza|NYK ORL LAL NOP HOU WAS PHX SAC POR MIA|3|CR
-Robert Covington|PHI MIN HOU POR LAC|3|R
-P.J. Tucker|TOR PHX MIL HOU MIA PHI LAC|3|CR
-Bobby Portis|CHI WAS NYK MIL|4|C
-Jae Crowder|CLE DAL BOS UTA MIA MEM PHX MIL SAC|3|R
-Dennis Schroder|ATL OKC LAL BOS HOU TOR BKN GSW DET SAC|3|I
-Goran Dragic|PHX HOU MIA TOR BKN CHI MIL|4|AIR
-Nicolas Batum|POR CHA LAC PHI|3|I
-Evan Fournier|DEN ORL BOS NYK DET|3|I
-Hedo Turkoglu|SAC SAS ORL TOR PHX LAC|3|I
-Andrei Kirilenko|UTA MIN BKN|3|AI
-Toni Kukoc|CHI PHI ATL MIL|4|CIR
-Arvydas Sabonis|POR|4|I
-Drazen Petrovic|POR BKN|4|IR
-Detlef Schrempf|DAL IND OKC POR|3|AI
-Rik Smits|IND|3|AI
-Mehmet Okur|DET UTA BKN|2|CAIR
-Bismack Biyombo|CHA TOR ORL PHX MEM OKC SAS|3|I
-Steven Adams|OKC NOP MEM HOU|4|I
-Kelly Olynyk|BOS MIA UTA DET HOU TOR NOP|2|I
-Jusuf Nurkic|DEN POR PHX CHA UTA|3|I
-Domantas Sabonis|OKC IND SAC|5|AI
-Lauri Markkanen|CHI UTA|4|AI
-Alperen Sengun|HOU|5|AI
-Franz Wagner|ORL|4|I
-Josh Giddey|OKC CHI|4|I
-Dyson Daniels|NOP ATL|3|I
-Jonas Valanciunas|TOR MEM NOP WAS SAC DEN|3|I
-Nikola Vucevic|PHI ORL CHI|3|AI
-Bogdan Bogdanovic|SAC ATL LAC|3|I
-Thanasis Antetokounmpo|NYK MIL|2|CIR
-Kostas Antetokounmpo|DAL LAL|1|CIR
-Mark Madsen|LAL MIN|2|C
-Adam Morrison|CHA LAL|3|C
-Luke Walton|LAL CLE|3|CR
-Sasha Vujacic|LAL BKN LAC NYK|2|CI
-Jordan Farmar|LAL BKN SAC|2|C
-Kwame Brown|WAS LAL MEM DET CHA GSW PHI|4|1
-Greg Oden|POR MIA|4|1
-Michael Olowokandi|LAC MIN BOS|2|1I
-Anthony Bennett|CLE MIN TOR BKN|3|1I
-Andrea Bargnani|TOR NYK BKN|2|1I
-Markelle Fultz|PHI ORL SAC|3|1
-Deandre Ayton|PHX POR LAL|4|1
-Paolo Banchero|ORL|5|A1
-Cade Cunningham|DET|6|A1
-Kenyon Martin|BKN DEN LAC NYK MIL|3|A1
-Glenn Robinson|MIL ATL PHI SAS|3|CA1
-Larry Johnson|CHA NYK|4|A1
-Ish Smith|HOU MEM GSW ORL MIL PHX OKC PHI NOP DET WAS CHA DEN|2|R
-Joe Ingles|UTA MIL ORL MIN|3|IR
-Bojan Bogdanovic|BKN WAS IND UTA DET NYK|3|IR
-Josh Hart|LAL NOP POR NYK|4|
-Mikal Bridges|PHX BKN NYK|5|
-Donte DiVincenzo|MIL GSW NYK MIN|3|C
-Immanuel Quickley|NYK TOR|3|
-RJ Barrett|NYK TOR|4|I
-Julius Randle|LAL NOP NYK MIN|5|A
-Tyrese Haliburton|SAC IND|7|A
-Myles Turner|IND MIL|4|
-Buddy Hield|NOP SAC IND PHI GSW|3|I
-De'Aaron Fox|SAC SAS|6|A
-Zach LaVine|MIN CHI SAC|5|A
-DeMarcus Cousins|SAC NOP GSW HOU LAC MIL DEN|5|A
-Rudy Gay|MEM TOR SAC SAS UTA|3|
-Monta Ellis|GSW MIL DAL IND|4|R
-Stephen Jackson|BKN SAS ATL IND GSW CHA MIL LAC|3|CR
-Gilbert Arenas|GSW WAS ORL MEM|5|AR
-Antawn Jamison|GSW DAL WAS CLE LAL LAC|3|A
-Caron Butler|MIA LAL WAS DAL LAC MIL OKC DET SAC|3|CA
-Josh Smith|ATL DET HOU LAC|4|
-Joe Johnson|BOS PHX ATL BKN MIA UTA HOU|4|A
-Al Jefferson|BOS MIN UTA CHA IND|3|
-Andre Drummond|DET CLE LAL PHI BKN CHI|4|A
-Hassan Whiteside|SAC MIA POR UTA|3|R
-Enes Kanter Freedom|UTA OKC NYK POR BOS|3|I
-Lance Stephenson|IND CHA LAC NOP MIN MEM LAL|3|R
-Michael Beasley|MIA MIN PHX HOU MIL NYK LAL|3|
-Nick Young|WAS LAC PHI LAL GSW DEN|4|C
-Dion Waiters|CLE OKC MIA LAL|3|C
-J.R. Smith|NOP DEN NYK CLE LAL|4|C
-Tristan Thompson|CLE BOS SAC IND CHI LAL|3|CI
-Iman Shumpert|NYK CLE SAC HOU BKN|3|C
-Timofey Mozgov|DEN NYK CLE LAL|2|CI
-Channing Frye|NYK POR PHX ORL CLE LAL|2|C
-Richard Jefferson|BKN MIL SAS GSW UTA DAL CLE DEN|3|C
-Kendrick Perkins|BOS OKC CLE NOP|3|C
-Glen Davis|BOS ORL LAC|3|CR
-Leon Powe|BOS CLE MEM|1|CR
-Sam Cassell|HOU PHX DAL BKN MIL MIN LAC BOS|4|CA
-James Posey|DEN MEM HOU MIA BOS NOP IND|2|C
-Bruce Bowen|MIA BOS PHI SAS|3|CR
-J.J. Barea|DAL MIN|3|CR
-Jason Terry|ATL DAL BOS BKN HOU MIL|3|C
-Tyson Chandler|CHI CHA NOP DAL NYK PHX LAL HOU|4|CA
-DeShawn Stevenson|UTA ORL WAS DAL BKN ATL|2|C
-Mo Williams|MIL CLE LAC UTA POR MIN CHA|3|CAR
-Delonte West|BOS OKC CLE DAL|3|
-Anderson Varejao|CLE POR GSW|3|IR
-Zydrunas Ilgauskas|CLE MIA|4|AI
-Paul Millsap|UTA ATL DEN BKN PHI|3|AR
-Jeff Teague|ATL IND MIN BOS ORL MIL|3|CA
-Shareef Abdur-Rahim|MEM ATL POR SAC|3|A
-Steve Francis|HOU ORL NYK|4|A
-Cuttino Mobley|HOU ORL SAC LAC|2|R
-Rafer Alston|MIL TOR MIA HOU ORL BKN|3|R
-Luis Scola|HOU PHX IND TOR BKN|3|IR
-Chandler Parsons|HOU DAL MEM ATL|3|R
-Clint Capela|HOU ATL|4|I
-Eric Gordon|LAC NOP HOU PHX PHI|3|
-Montrezl Harrell|HOU LAC LAL WAS CHA PHI|3|R
-Patrick Beverley|HOU LAC MIN LAL ORL CHI PHI MIL|4|R
-Taj Gibson|CHI OKC MIN NYK WAS DET CHA|2|
-Joakim Noah|CHI NYK MEM LAC|4|A
-Luol Deng|CHI CLE MIA LAL MIN|3|AI
-Kirk Hinrich|CHI WAS ATL|2|
-Ben Gordon|CHI DET CHA ORL GSW|3|
-Mike Dunleavy Jr.|GSW IND CHI CLE ATL|2|
-Jason Richardson|GSW CHA PHX ORL PHI|3|
-Matt Barnes|LAC SAC NYK PHI GSW PHX ORL LAL MEM|2|C
-Marreese Speights|PHI MEM CLE GSW LAC ORL|2|C
-Patrick McCaw|GSW CLE TOR|2|CR
-Quinn Cook|GSW LAL CLE|2|CR
-Seth Curry|CLE SAC PHX DAL POR PHI BKN CHA|3|R
-Tyler Herro|MIA|5|A
-Bam Adebayo|MIA|5|A
-Duncan Robinson|MIA DET|3|R
-Caleb Martin|CHA MIA PHI DAL|2|R
-Max Strus|CHI MIA CLE|2|R
-Victor Oladipo|ORL OKC IND HOU MIA|4|A
-Malcolm Brogdon|MIL IND BOS POR WAS|3|R
-Ricky Rubio|MIN UTA PHX CLE IND|3|I
-Jaren Jackson Jr.|MEM|5|A
-Desmond Bane|MEM ORL|4|
-Dillon Brooks|MEM HOU PHX|3|IR
-Jalen Green|HOU PHX|4|
-Jerami Grant|PHI OKC DEN DET POR|3|R
-CJ McCollum|POR NOP WAS|4|
-Lonzo Ball|LAL NOP CHI CLE|4|
-LaMelo Ball|CHA|5|A
-Brandon Ingram|LAL NOP TOR|5|A
-Dejounte Murray|SAS ATL NOP|4|A
-Kristaps Porzingis|NYK DAL WAS BOS ATL|5|CAI
-Tim Hardaway Jr.|NYK ATL DAL DET DEN|2|
-Muggsy Bogues|WAS CHA GSW TOR|4|
-Manute Bol|WAS GSW PHI MIA|4|IR
-Gheorghe Muresan|WAS BKN|3|IR
-Shawn Bradley|PHI BKN DAL|3|
-Spud Webb|ATL SAC MIN ORL|3|R
-Robert Parish|GSW BOS CHA CHI|4|CA
-Larry Bird|BOS|8|CMA
-Magic Johnson|LAL|8|CMA1
-Kareem Abdul-Jabbar|MIL LAL|7|CMA1
-Dominique Wilkins|ATL LAC BOS SAS ORL|5|A
-Clyde Drexler|POR HOU|5|CA
-Isiah Thomas|DET|5|CA
-Joe Dumars|DET|4|CA
-Tim Hardaway|GSW MIA DAL DEN IND|4|A
-Chris Mullin|GSW IND|4|A
-Mitch Richmond|GSW SAC WAS LAL|4|CA
-Glen Rice|MIA CHA LAL NYK HOU LAC|3|CA
-Latrell Sprewell|GSW NYK MIN|4|A
-Allan Houston|DET NYK|3|A
-Stephon Marbury|MIN BKN PHX NYK BOS|4|A
-Michael Finley|PHX DAL SAS BOS|3|CA
-Nick Van Exel|LAL DEN DAL GSW POR SAS|3|AR
-Eddie Jones|LAL CHA MIA MEM DAL IND|3|A
-Horace Grant|CHI ORL OKC LAL|3|CA
-Ron Harper|CLE LAC CHI LAL|3|C`;
-
-const PLAYERS = RAW.trim().split('\n').map(l => {
-  const [n,t,p,g] = l.split('|');
-  return { n, t: t.split(' '), p: +p, g: g || '' };
-});
-const BY_NAME = new Map(PLAYERS.map(p => [p.n, p]));
+/* Player database. players.json is built by build_players.py; until it exists the
+   game falls back to players.sample.json (the original hand-typed starter list). */
+let PLAYERS = [], BY_NAME = new Map(), DB_NOTE = '';
 const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9 ]/g,'');
-PLAYERS.forEach(p => p.k = norm(p.n));
+async function loadPlayers(){
+  for (const [file, note] of [['players.json', n => `${n.toLocaleString()} players since 1970-71`],
+                              ['players.sample.json', n => `Sample database of ${n} players (full database not built yet)`]]) {
+    try {
+      const res = await fetch(file, { cache:'no-cache' });
+      if (!res.ok) continue;
+      PLAYERS = await res.json();
+      DB_NOTE = note(PLAYERS.length);
+      break;
+    } catch (e) {}
+  }
+  if (!PLAYERS.length) throw new Error('no player data');
+  for (const p of PLAYERS) {
+    p.g = p.g || ''; p.k = norm(p.n);
+    // same name, different players (two Larry Johnsons, etc.) share one entry
+    if (!BY_NAME.has(p.k)) BY_NAME.set(p.k, []);
+    BY_NAME.get(p.k).push(p);
+  }
+}
 
 const TEAM = {ATL:'Hawks',BOS:'Celtics',BKN:'Nets',CHA:'Charlotte',CHI:'Bulls',CLE:'Cavaliers',DAL:'Mavericks',DEN:'Nuggets',DET:'Pistons',GSW:'Warriors',HOU:'Rockets',IND:'Pacers',LAC:'Clippers',LAL:'Lakers',MEM:'Grizzlies',MIA:'Heat',MIL:'Bucks',MIN:'Timberwolves',NOP:'New Orleans',NYK:'Knicks',OKC:'Thunder/Sonics',ORL:'Magic',PHI:'76ers',PHX:'Suns',POR:'Trail Blazers',SAC:'Kings',SAS:'Spurs',TOR:'Raptors',UTA:'Jazz',WAS:'Wizards/Bullets'};
 const has = (p,...teams) => teams.every(t => p.t.includes(t));
@@ -559,8 +250,8 @@ function odds(pid){
   const valid = PLAYERS.filter(PROMPTS[pid].test);
   const w = valid.map(p => Math.pow(p.p, 3.4) * (0.6 + 0.8 * rng(pid + p.n)()));
   const sum = w.reduce((a,b)=>a+b,0);
-  const list = valid.map((p,i) => ({ n:p.n, pct: w[i]/sum*100 })).sort((a,b)=>b.pct-a.pct);
-  return oddsCache[pid] = { list, map: new Map(list.map(x=>[x.n,x.pct])) };
+  const list = valid.map((p,i) => ({ id:p.id, n:p.n, pct: w[i]/sum*100 })).sort((a,b)=>b.pct-a.pct);
+  return oddsCache[pid] = { list, map: new Map(list.map(x=>[x.id,x.pct])) };
 }
 /* Six tiers by pick rate. Each tier pays a flat value, and every point is a foot back. */
 const TIERS = [
@@ -595,8 +286,7 @@ const STORE = 'fromthelogo:' + localKey();
 function load(){ try { const s = JSON.parse(localStorage.getItem(STORE)); if (s && s.prompts) return s; } catch(e){} return null; }
 function save(){ if (state.mode !== 'daily') return; try { localStorage.setItem(STORE, JSON.stringify(state)); } catch(e){} }
 
-let state = load() || freshState('daily', 'daily-' + localKey());
-if (state.started === undefined) state.started = state.slots.some(s => s.status !== 'open');
+let state = null;
 let sel = 0, msg = { text:'', bad:false };
 
 const $ = id => document.getElementById(id);
@@ -696,9 +386,10 @@ function timeUp(i){
 }
 
 /* no dropdown: you type the full name, Enter shoots. Unknown names get a "did you mean". */
+const isUsed = p => state.slots.some(s => s.status === 'pulled' && (s.id != null ? s.id === p.id : s.pick === p.n));
 function exactMatch(raw){
   const q = norm(raw).trim().replace(/\s+/g,' ');
-  return q ? PLAYERS.find(p => p.k === q) : null;
+  return (q && BY_NAME.get(q)) || [];
 }
 function setStatus(text, bad){
   msg = { text, bad };
@@ -709,10 +400,11 @@ function setStatus(text, bad){
 function tryGuess(){
   const inp = $('guess'); if (!inp) return;
   const raw = inp.value.trim(); if (!raw) return;
-  const p = exactMatch(raw);
-  if (p) {
-    if (state.slots.some(s => s.pick === p.n)) { setStatus(`${p.n} is already in this pack. `, true); didYouMean([]); return; }
-    return submit(p.n);
+  const same = exactMatch(raw);
+  if (same.length) {
+    const open = same.filter(p => !isUsed(p));
+    if (!open.length) { setStatus(`${same[0].n} is already in this pack. `, true); didYouMean([]); return; }
+    return submit(open);
   }
   const close = fuzzy(raw);
   didYouMean(close);
@@ -732,10 +424,10 @@ function editDist(a, b){
 function fuzzy(raw){
   const q = norm(raw).trim().replace(/\s+/g,' ');
   if (q.length < 3) return [];
-  const used = new Set(state.slots.map(s => s.pick).filter(Boolean));
-  const out = [];
+  const out = [], seen = new Set();
   for (const p of PLAYERS) {
-    if (used.has(p.n)) continue;
+    if (seen.has(p.k) || isUsed(p)) continue;
+    seen.add(p.k);
     const words = p.k.split(' ');
     const cands = [p.k, words.at(-1), words[0], words.slice(-2).join(' ')];
     let best = Infinity, len = q.length;
@@ -762,9 +454,10 @@ function onKey(e){
 }
 function focusInput(){ const i = $('guess'); if (i) i.focus({preventScroll:true}); }
 
-function submit(name){
-  const i = state.active, pid = state.prompts[i], p = BY_NAME.get(name), slot = state.slots[i];
-  if (!PROMPTS[pid].test(p)) {
+function submit(cands){
+  const i = state.active, pid = state.prompts[i], slot = state.slots[i];
+  const p = cands.filter(PROMPTS[pid].test).sort((a,b) => b.p - a.p)[0], name = cands[0].n;
+  if (!p) {
     slot.strikes++;
     if (slot.strikes >= 3) { state.slots[i] = { status:'blank', strikes:3, pts:0 }; msg = {text:'',bad:false}; lastPull = { html:`${esc(name)} doesn't fit either. Brick.`, bad:true }; Stage.miss(); return next(i); }
     msg = { text:`${name} doesn't fit. `, bad:true };
@@ -772,8 +465,8 @@ function submit(name){
     $('panel')?.classList.add('shake');
     focusInput(); return;
   }
-  const pct = odds(pid).map.get(name), t = tierOf(pct);
-  state.slots[i] = { status:'pulled', pick:name, pct, tier:t.id, pts:pointsOf(pct), strikes:slot.strikes };
+  const pct = odds(pid).map.get(p.id), t = tierOf(pct);
+  state.slots[i] = { status:'pulled', pick:name, id:p.id, pct, tier:t.id, pts:pointsOf(pct), strikes:slot.strikes };
   msg = {text:'',bad:false};
   lastPull = { html:`<strong>${esc(name)}</strong> · ${t.name}${serial(t,name) ? ' ' + serial(t,name) : ''} · picked by ${fmtPct(pct)} · +${pointsOf(pct)}`, bad:false };
   Stage.pull(distOf(totalPts()), state.slots[i].pts);
@@ -1081,12 +774,20 @@ const Stage = (() => {
   };
 })();
 
-function rip(){ state = freshState('unlimited', 'rip-' + Date.now() + Math.random()); state.started = true; lastPull = null; msg={text:'',bad:false}; Stage.set(distOf(0)); render(); window.scrollTo({top:0,behavior:'smooth'}); focusInput(); }
+function rip(){ if (!state) return; state = freshState('unlimited', 'rip-' + Date.now() + Math.random()); state.started = true; lastPull = null; msg={text:'',bad:false}; Stage.set(distOf(0)); render(); window.scrollTo({top:0,behavior:'smooth'}); focusInput(); }
 $('tabRip').addEventListener('click', rip);
-$('tabDaily').addEventListener('click', () => { state = load() || freshState('daily','daily-' + localKey()); lastPull = null; msg={text:'',bad:false}; Stage.set(distOf(totalPts())); render(); focusInput(); });
+$('tabDaily').addEventListener('click', () => { if (!state) return; state = load() || freshState('daily','daily-' + localKey()); lastPull = null; msg={text:'',bad:false}; Stage.set(distOf(totalPts())); render(); focusInput(); });
 
-Stage.set(distOf(totalPts()));
-render();
+(async function boot(){
+  $('page').innerHTML = '<div class="panel"><span class="meta">Loading players…</span></div>';
+  try { await loadPlayers(); }
+  catch (e) { $('page').innerHTML = `<div class="panel"><span class="meta">Couldn't load the player database. Refresh to try again.</span></div>`; $('foot').textContent = ''; return; }
+  $('foot').textContent = `${DB_NOTE} · pick rates simulated until the live backend is on`;
+  state = load() || freshState('daily', 'daily-' + localKey());
+  if (state.started === undefined) state.started = state.slots.some(s => s.status !== 'open');
+  Stage.set(distOf(totalPts()));
+  render();
+})();
 </script>
 
 </body>

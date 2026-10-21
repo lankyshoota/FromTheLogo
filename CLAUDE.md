@@ -17,7 +17,12 @@ steps and check in before big changes.
 
 ## Files
 - `index.html` — the full playable prototype (game, animation, scoring, all in one file).
-  Currently uses a hand-typed ~230-player list in the `RAW` string and simulated pick rates.
+  Loads `players.json` at startup (falls back to `players.sample.json`, the old hand-typed
+  starter list, if it's missing). Picks are tracked by player id, since some names are shared
+  (two Larry Johnsons); typing a shared name counts if any player with it fits. Pick rates
+  are still simulated from popularity.
+- `players.sample.json` — 324-player fallback (fake negative ids). Delete once players.json
+  is committed, or keep as a fallback.
 - `build_players.py` — builds `players.json` (every player since 1970-71). Resumable, caches
   to `./cache`. Takes ~2 hours. Fields per player: id, n (name), t (franchises, current
   abbreviations), g (tag letters), s (seasons: [year, team, gp, pts, reb, ast]), aw (award
