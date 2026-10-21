@@ -148,6 +148,54 @@ details.how p{margin:.6em 0 0;color:var(--muted);max-width:60ch}
 .recap li b{color:var(--text);display:block;font-weight:600}
 .actions{display:flex;gap:8px;flex-wrap:wrap}
 .foot{font:500 12px var(--mono);color:var(--muted);letter-spacing:.04em;text-align:center}
+/* accounts */
+.chip{display:inline-block;margin-top:8px;font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--gold);background:rgba(232,184,74,.1);border:1px solid rgba(232,184,74,.35);border-radius:999px;padding:4px 10px;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+dialog.sheet{width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:20px;border-radius:14px;border:1px solid var(--gold);background:var(--page);color:var(--text);box-shadow:0 20px 60px rgba(0,0,0,.5)}
+dialog.sheet::backdrop{background:rgba(10,7,14,.75);backdrop-filter:blur(3px)}
+.sheet h2{font:900 34px/1 var(--display);text-transform:uppercase;margin:0 0 8px}
+.sheet .mark{font-size:52px;margin-bottom:10px}
+.sheet p{color:var(--muted);margin:0 0 14px}
+.sheet .fine{font-size:14px;margin:12px 0 0}
+.form{display:flex;flex-direction:column;gap:10px}
+.form label{font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;flex-direction:column;gap:5px}
+.form input{font:500 17px var(--body);color:var(--text);background:var(--binder);border:1px solid var(--line);border-radius:10px;padding:10px 12px;text-transform:none;letter-spacing:0}
+.btn.wide{width:100%;padding:11px 14px}
+.btn:disabled{opacity:.55;cursor:wait}
+.btn.google{display:flex;align-items:center;justify-content:center;gap:10px;text-transform:none;letter-spacing:.01em}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted);font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.1em;margin:4px 0}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+.err{color:var(--miss);font-size:15px;min-height:1.3em;margin:0}
+.link{background:none;border:0;color:var(--gold);text-decoration:underline;cursor:pointer;font:500 15px var(--body);padding:0}
+.sheet .tabs{margin-bottom:14px}
+.stack{display:flex;flex-direction:column;gap:8px}
+.save{border:1px dashed var(--gold);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:rgba(232,184,74,.06)}
+.save b{font:900 22px/1 var(--display);text-transform:uppercase}
+.save .actions{align-items:center}
+
+/* stats page */
+body:not([data-view="stats"]) #statsView{display:none}
+body[data-view="stats"] .g{display:none}
+.stats{display:flex;flex-direction:column;gap:14px}
+.stats h2{font:900 40px/1 var(--display);text-transform:uppercase;margin:0}
+.stats h3{font:600 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:6px 0 0}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.tile{background:var(--sleeve);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden}
+.tile::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,rgba(255,255,255,.05),transparent 40%)}
+.tile b{font:900 32px/1 var(--display);font-variant-numeric:tabular-nums}
+.tile small{font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tile span{font-size:14px;color:var(--muted)}
+.tiercount{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.tiercount .card{width:100%;padding:5px;align-items:flex-start}
+.tiercount .card .pn{font-size:24px}
+.rarest{display:grid;grid-template-columns:110px 1fr;gap:14px;align-items:center;background:var(--sleeve);border:1px solid var(--line);border-radius:12px;padding:10px}
+.rarest .card{width:110px}
+.rarest .card .pn{font-size:18px}
+.hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.hist li{display:grid;grid-template-columns:1fr auto;gap:2px 10px;border-top:1px solid var(--line);padding:9px 0}
+.hist .d{font-weight:600}
+.hist .sc{font:900 22px/1 var(--display);text-align:right;font-variant-numeric:tabular-nums}
+.hist .row7{font-size:15px;letter-spacing:.06em}
+.hist .tag{font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:right}
 @media (max-width:420px){.sleeve{grid-template-columns:70px 1fr}.card{width:70px}.prompt{font-size:20px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 </style>
@@ -159,24 +207,27 @@ details.how p{margin:.6em 0 0;color:var(--muted);max-width:60ch}
     <div>
       <h1 class="mark">From the <span>Logo</span></h1>
       <div class="sub" id="sub">Pack #1</div>
+      <button class="chip" id="acctBtn" type="button" hidden></button>
     </div>
     <div class="score"><b id="total">0</b><small>pull value</small></div>
   </header>
 
-  <div class="stage" id="stage" title="Tap to shoot">
+  <div class="stage g" id="stage" title="Tap to shoot">
     <canvas id="court" aria-label="Your shooter. Every pull moves him further from the hoop."></canvas>
     <div class="hud"><b id="hudFt">2 FT</b><small id="hudLbl">Layup</small><span class="hint">tap to shoot</span></div>
   </div>
 
   <div class="lastpull" id="settledNote" hidden></div>
-  <section class="page" id="page" aria-live="polite"></section>
-  <section id="results"></section>
+  <section class="page g" id="page" aria-live="polite"></section>
+  <section class="g" id="results"></section>
+  <section class="stats" id="statsView" aria-live="polite"></section>
   <div class="tabs" role="group" aria-label="Mode">
     <button id="tabDaily" aria-pressed="true">Daily pack</button>
     <button id="tabRip" aria-pressed="false">Rip a new pack</button>
+    <button id="tabStats" aria-pressed="false">Stats</button>
   </div>
 
-  <details class="how">
+  <details class="how g">
     <summary>How to play</summary>
     <p>Seven NBA prompts, same for everyone today. Name a player who fits each one. The fewer people who pick your guy, the rarer the card you pull and the more it's worth. LeBron fits a lot of prompts. He's also worth almost nothing.</p>
     <p>Every point moves your shooter one foot further from the rim. A 100-point pull sends him back 100 feet.</p>
@@ -189,10 +240,12 @@ details.how p{margin:.6em 0 0;color:var(--muted);max-width:60ch}
   <p class="foot" id="foot">Loading players…</p>
 </div>
 
+<dialog class="sheet" id="sheet"><div id="sheetBody"></div></dialog>
+
 <script>
 /* Player database. players.json is built by build_players.py; until it exists the
    game falls back to players.sample.json (the original hand-typed starter list). */
-let PLAYERS = [], BY_NAME = new Map(), DB_NOTE = '';
+let PLAYERS = [], BY_NAME = new Map(), BY_ID = new Map(), DB_NOTE = '';
 const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9 ]/g,'');
 async function loadPlayers(){
   for (const [file, note] of [['players.json', n => `${n.toLocaleString()} players since 1970-71`],
@@ -207,7 +260,7 @@ async function loadPlayers(){
   }
   if (!PLAYERS.length) throw new Error('no player data');
   for (const p of PLAYERS) {
-    p.g = p.g || ''; p.k = norm(p.n);
+    p.g = p.g || ''; p.k = norm(p.n); BY_ID.set(p.id, p);
     // same name, different players (two Larry Johnsons, etc.) share one entry
     if (!BY_NAME.has(p.k)) BY_NAME.set(p.k, []);
     BY_NAME.get(p.k).push(p);
@@ -283,33 +336,32 @@ function buildPack(seed){
 function freshState(mode, seed){
   return { mode, seed, date: localKey(), started:false, prompts: buildPack(seed), slots: Array.from({length:7}, () => ({ status:'open', strikes:0 })), active:0 };
 }
-const storeKey = date => 'fromthelogo:' + date;
+/* saved packs are per user: fromthelogo:<user id>:<date> ("local" when offline with no user) */
+const storeKey = (date, uid = user?.id || 'local') => `fromthelogo:${uid}:${date}`;
 function load(date = localKey()){ try { const s = JSON.parse(localStorage.getItem(storeKey(date))); if (s && s.prompts) { s.date ||= date; return s; } } catch(e){} return null; }
 function save(st = state){ if (st.mode !== 'daily') return; try { localStorage.setItem(storeKey(st.date), JSON.stringify(st)); } catch(e){} }
 
 /* ---------- backend (Supabase). All optional: if it can't be reached, the game runs on simulated rates. ---------- */
 const SB_URL = 'https://irtsjiluvpbxgxvteots.supabase.co';
 const SB_KEY = 'sb_publishable_fpOzn7FpnH4-OnC1PN5jVQ_6n75KR6K';   // publishable key: meant to be public
-const COLD = 50;   // answers a prompt needs before its pick rates are fully real
-async function rpc(fn, args, ms = 4000){
+const SB_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js';
+const COLD = 50;   // answers a prompt needs before its pick rates are fully real (same as schema.sql)
+async function rpc(fn, args = {}, ms = 4000){
+  if (!sb) throw new Error('offline');
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
   try {
-    const res = await fetch(`${SB_URL}/rest/v1/rpc/${fn}`, { method:'POST', signal:ctl.signal,
-      headers:{ apikey:SB_KEY, 'Content-Type':'application/json' }, body:JSON.stringify(args) });
-    const body = await res.text();
-    if (!res.ok) throw new Error(`${fn} ${res.status}: ${body}`);
-    return body ? JSON.parse(body) : null;
+    const { data, error } = await sb.rpc(fn, args).abortSignal(ctl.signal);
+    if (error) throw error;
+    return data;
   } finally { clearTimeout(t); }
 }
-const DEVICE = (() => {
-  try { let id = localStorage.getItem('fromthelogo:device'); if (!id) localStorage.setItem('fromthelogo:device', id = crypto.randomUUID()); return id; }
-  catch(e){ return crypto.randomUUID(); }
-})();
+const withTimeout = (promise, ms) => Promise.race([promise, new Promise((_, no) => setTimeout(() => no(new Error('timeout')), ms))]);
 /* a date's picks are open while it's that date somewhere on Earth: until 00:00 UTC two days later */
 const closesAt = date => { const [y,m,d] = date.split('-').map(Number); return Date.UTC(y, m-1, d+2); };
 
 /* everyone gets the pack stored in Supabase; the first player of the day stores the one their browser built */
 async function syncPack(st){
+  if (!user) { st.online = false; return; }
   try {
     const stored = await rpc('get_or_create_pack', { p_date: st.date, p_prompts: st.prompts.map(id => ({ id, text: PROMPTS[id].text })) });
     const ids = (stored || []).map(x => x.id);
@@ -336,9 +388,11 @@ function rateList(st, idx){
   return odds(st.prompts[idx]).list.map(x => ({ n:x.n, pct:rateOf(st, idx, x.id) })).sort((a,b) => b.pct - a.pct);
 }
 
+const pickArgs = (st, idx, playerId) =>
+  ({ p_date:st.date, p_prompt_idx:idx, p_player_id:playerId, p_sim_pct:odds(st.prompts[idx]).map.get(playerId) ?? 0 });
 async function sendPick(st, idx, playerId){
   try {
-    const [r] = await rpc('submit_pick', { p_date:st.date, p_prompt_idx:idx, p_player_id:playerId, p_device:DEVICE }, 3500);
+    const [r] = await rpc('submit_pick', pickArgs(st, idx, playerId), 3500);
     const e = REAL[st.date + '|' + idx] ||= { total:0, counts:new Map() };
     e.total = r.prompt_picks; e.counts.set(playerId, r.player_picks);
     return true;
@@ -349,7 +403,7 @@ async function flushUnsent(st){
   if (!st.unsent?.length) return;
   if (Date.now() >= closesAt(st.date)) { st.unsent = []; save(st); return; }
   for (const [idx, id] of [...st.unsent]) {
-    try { await rpc('submit_pick', { p_date:st.date, p_prompt_idx:idx, p_player_id:id, p_device:DEVICE }); }
+    try { await rpc('submit_pick', pickArgs(st, idx, id)); }
     catch(e){ break; }
     st.unsent = st.unsent.filter(u => u[0] !== idx); save(st);
   }
@@ -358,8 +412,7 @@ async function sendScore(st){
   if (st.mode !== 'daily' || !st.online || st.scoreSent || st.slots.some(s => s.status === 'open')) return;
   if (Date.now() >= closesAt(st.date)) return;
   try {
-    await rpc('submit_score', { p_date:st.date, p_device:DEVICE, p_total:st.slots.reduce((a,s) => a + (s.pts||0), 0),
-      p_cards:st.slots.map(s => s.status === 'pulled' ? { player_id:s.id, pts:s.pts } : null) });
+    await rpc('submit_score', { p_date:st.date, p_total:st.slots.reduce((a,s) => a + (s.pts||0), 0) });
     st.scoreSent = true; save(st);
   } catch(e){}
 }
@@ -385,8 +438,324 @@ async function settlePast(){
   if (!latest) return;
   const day = new Date(latest.date + 'T12:00').toLocaleDateString(undefined, { month:'short', day:'numeric' });
   const { live, total } = latest.settled;
-  $('settledNote').innerHTML = `Your ${day} pack settled: <strong>${total}</strong> final` + (total !== live ? ` (live score was ${live})` : ' (same as live)');
-  $('settledNote').hidden = false;
+  note(`Your ${day} pack settled: <strong>${total}</strong> final` + (total !== live ? ` (live score was ${live})` : ' (same as live)'));
+}
+function note(html, bad = false){ const n = $('settledNote'); n.innerHTML = html; n.classList.toggle('bad', bad); n.hidden = false; }
+
+/* one daily pack per user: if this account already played today on another device, show that */
+async function reconcileDay(st){
+  if (!st.online) return;
+  let day; try { day = await rpc('get_my_day', { p_date:st.date }); } catch(e){ return; }
+  if (!day || (!day.picks.length && !day.submitted)) return;
+  for (const p of day.picks) {
+    const cur = st.slots[p.prompt_idx];
+    if (cur.status === 'pulled' && cur.id === p.player_id) continue;
+    st.slots[p.prompt_idx] = { status:'pulled', pick:BY_ID.get(p.player_id)?.n || `Player #${p.player_id}`, id:p.player_id,
+                               pct:p.pct, tier:p.tier, pts:p.pts, strikes:0 };
+  }
+  if (day.submitted) {
+    st.slots = st.slots.map((s, i) => day.picks.some(p => p.prompt_idx === i) ? s : { status:'blank', strikes:3, pts:0 });
+    st.scoreSent = true;
+  }
+  st.started = true;
+  st.active = st.slots.findIndex(s => s.status === 'open');
+  save(st);
+}
+
+/* ---------- accounts (Supabase Auth). Guests are anonymous users; signing up upgrades that same user. ---------- */
+let sb = null, user = null, profile = null;
+const isGuest = () => !!user?.is_anonymous;
+const here = () => location.origin + location.pathname;
+const TRANSFER = 'fromthelogo:transfer';   // { token, from }: a guest's history waiting to be claimed by an account
+/* errors Supabase sends back in the URL after Google (e.g. that Google account already has its own account) */
+const urlErr = (() => {
+  const q = new URLSearchParams(location.hash.slice(1) + '&' + location.search.slice(1));
+  return q.get('error') ? { code:q.get('error_code') || q.get('error'), msg:q.get('error_description') || '' } : null;
+})();
+
+function loadSupabase(){
+  return new Promise(done => {
+    if (window.supabase) return done();
+    const el = document.createElement('script'); el.src = SB_JS; el.onload = el.onerror = () => done();
+    document.head.appendChild(el); setTimeout(done, 6000);
+  });
+}
+async function initAuth(){
+  await loadSupabase();
+  if (!window.supabase?.createClient) return;
+  try {
+    sb = supabase.createClient(SB_URL, SB_KEY, { auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:true } });
+    const { data } = await withTimeout(sb.auth.getSession(), 6000);
+    user = data.session?.user || null;
+    sb.auth.onAuthStateChange((ev, session) => { user = session?.user || null; });
+  } catch(e){ console.warn('Supabase Auth unreachable, playing offline.', e); user = null; }
+  if (urlErr || /access_token|error=/.test(location.hash + location.search)) history.replaceState(null, '', here());
+}
+
+/* the first time a user is known on this browser: claim guest history, adopt older saved packs, username, password */
+async function afterLogin(){
+  if (!user) return;
+  adoptLocalPacks('local'); adoptLegacyPacks();
+  let t = null; try { t = JSON.parse(localStorage.getItem(TRANSFER)); } catch(e){}
+  if (t && !isGuest()) {
+    try {
+      const moved = await rpc('claim_transfer', { p_token:t.token }, 8000);
+      localStorage.removeItem(TRANSFER);
+      if (t.from !== user.id) { adoptLocalPacks(t.from); if (moved) note(`Moved ${moved} guest pack${moved > 1 ? 's' : ''} into your account.`); }
+    } catch(e){ console.warn('claim_transfer failed', e); }
+  }
+  if (isGuest()) return;
+  try { profile = await rpc('get_profile'); } catch(e){ profile = null; }
+  if (user.user_metadata?.needs_password) await sheetSetPassword();
+  if (profile && !profile.username) {
+    const wanted = user.user_metadata?.username;
+    try { if (wanted) { await rpc('set_username', { p_name:wanted }); profile.username = wanted; } } catch(e){}
+    if (!profile.username) await sheetUsername();
+  }
+}
+function adoptLocalPacks(fromUid){   // copy another id's saved packs to this user (keeps this user's own on clashes)
+  try {
+    for (const k of Object.keys(localStorage)) {
+      const m = k.match(/^fromthelogo:([^:]+):(\d{4}-\d\d-\d\d)$/);
+      if (!m || m[1] !== fromUid || fromUid === user.id) continue;
+      if (!localStorage.getItem(storeKey(m[2]))) localStorage.setItem(storeKey(m[2]), localStorage.getItem(k));
+      localStorage.removeItem(k);
+    }
+  } catch(e){}
+}
+function adoptLegacyPacks(){   // packs saved before accounts existed (fromthelogo:<date>)
+  try {
+    for (const k of Object.keys(localStorage)) {
+      const m = k.match(/^fromthelogo:(\d{4}-\d\d-\d\d)$/);
+      if (!m) continue;
+      if (!localStorage.getItem(storeKey(m[1]))) localStorage.setItem(storeKey(m[1]), localStorage.getItem(k));
+      localStorage.removeItem(k);
+    }
+  } catch(e){}
+}
+async function prepTransfer(){   // before a guest logs in to an existing account
+  if (!isGuest()) return;
+  const token = await rpc('start_transfer');
+  localStorage.setItem(TRANSFER, JSON.stringify({ token, from:user.id }));
+}
+
+/* sheet = the modal panel used for welcome, log in / sign up, username, password, account */
+function openSheet(html, { locked = false } = {}){
+  const d = $('sheet');
+  $('sheetBody').innerHTML = html;
+  d.oncancel = e => { if (locked) e.preventDefault(); };
+  if (!d.open) d.showModal();
+  d.querySelector('input,button')?.focus();
+  return d;
+}
+const closeSheet = () => { const d = $('sheet'); if (d.open) d.close(); };
+const busy = (form, on) => form.querySelectorAll('button,input').forEach(el => el.disabled = on);
+const GOOGLE_ICON = `<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>`;
+
+/* first visit with no session: guest or account. Resolves once there's a user (or we're offline). */
+function sheetWelcome(){
+  return new Promise(resolve => {
+    openSheet(`<h2 class="mark">From the <span>Logo</span></h2>
+      <p>Name the deep cuts. The fewer people who pick your guy, the rarer the card, and the further back you shoot from.</p>
+      <div class="stack">
+        <button class="btn primary wide" id="wGuest">Play as guest</button>
+        <button class="btn wide" id="wAuth">Log in / Sign up</button>
+      </div>
+      <p class="err" id="wErr"></p>
+      <p class="fine">Guests can save their results to an account any time.</p>`, { locked:true });
+    $('wGuest').onclick = async () => {
+      busy($('sheetBody'), true);
+      const { data, error } = await sb.auth.signInAnonymously().catch(e => ({ error:e }));
+      if (error) { console.warn(error); user = null; note("Couldn't start a guest session. Playing offline on simulated pick rates.", true); }
+      else user = data.user;
+      closeSheet(); resolve();
+    };
+    $('wAuth').onclick = () => sheetAuth('signup', { back:() => { sheetWelcome().then(resolve); } });
+  });
+}
+
+/* log in / sign up. Guests who sign up keep the same user (and everything they played). */
+function sheetAuth(mode = 'signup', { back } = {}){
+  const signup = mode === 'signup';
+  openSheet(`<h2>${signup ? 'Sign up' : 'Log in'}</h2>
+    ${isGuest() ? `<p>Your guest packs come with you${signup ? '' : ' into your account'}.</p>` : ''}
+    <div class="tabs" role="group"><button type="button" id="aUp" aria-pressed="${signup}">Sign up</button><button type="button" id="aIn" aria-pressed="${!signup}">Log in</button></div>
+    <form class="form" id="aForm" novalidate>
+      ${signup ? `<label>Username<input name="username" autocomplete="username" maxlength="20" placeholder="3–20 letters, numbers or _" required></label>` : ''}
+      <label>Email<input name="email" type="email" autocomplete="email" required></label>
+      <label>Password<input name="password" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" minlength="6" required></label>
+      <p class="err" id="aErr"></p>
+      <button class="btn primary wide" type="submit">${signup ? 'Create account' : 'Log in'}</button>
+      <div class="or">or</div>
+      <button class="btn wide google" type="button" id="aGoogle">${GOOGLE_ICON}Continue with Google</button>
+      ${back ? '<button class="link" type="button" id="aBack">Back</button>' : '<button class="link" type="button" id="aBack">Not now</button>'}
+    </form>`, { locked:!!back });
+  $('aUp').onclick = () => sheetAuth('signup', { back });
+  $('aIn').onclick = () => sheetAuth('login', { back });
+  $('aBack').onclick = () => back ? back() : closeSheet();
+  const form = $('aForm'), err = m => { $('aErr').textContent = m; busy(form, false); };
+  $('aGoogle').onclick = async () => {
+    busy(form, true);
+    try { await doGoogle(); } catch(e){ err(e.message || String(e)); }
+  };
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(form));   // read before disabling: disabled inputs aren't in FormData
+    busy(form, true); $('aErr').textContent = '';
+    try { signup ? await doSignup(f.username.trim(), f.email.trim(), f.password) : await doLogin(f.email.trim(), f.password); }
+    catch(e){ err(e.message || String(e)); }
+  };
+}
+async function doSignup(name, email, password){
+  if (!/^[A-Za-z0-9_]{3,20}$/.test(name)) throw new Error('Usernames are 3–20 letters, numbers or _.');
+  if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('That email doesn\'t look right.');
+  if (password.length < 6) throw new Error('Passwords need at least 6 characters.');
+  if (!(await rpc('username_available', { p_name:name }))) throw new Error('That username is taken.');
+  if (!user) {   // brand-new player: start as a guest so the account is the same user from the first pick
+    const { data, error } = await sb.auth.signInAnonymously();
+    if (error) throw error;
+    user = data.user;
+  }
+  if (!isGuest()) throw new Error("You're already logged in.");
+  const { data, error } = await sb.auth.updateUser({ email, data:{ username:name, needs_password:true } }, { emailRedirectTo:here() });
+  if (error) throw new Error(error.code === 'email_exists' || /already/i.test(error.message)
+    ? 'That email already has an account. Log in instead.' : error.message);
+  if (data.user.is_anonymous) {   // "Confirm email" is on: finish after the link
+    openSheet(`<h2>Check your email</h2>
+      <p>We sent a link to <strong>${esc(email)}</strong>. Open it on this device to finish: you'll set your password there. Until then you're still a guest, and nothing you play is lost.</p>
+      <button class="btn primary wide" id="okBtn">Keep playing</button>`);
+    $('okBtn').onclick = () => location.reload();   // now a guest: reload so the game starts as that user
+    return;
+  }
+  await sb.auth.updateUser({ password, data:{ needs_password:false } }).then(r => { if (r.error) throw r.error; });
+  await rpc('set_username', { p_name:name });
+  location.reload();
+}
+async function doLogin(email, password){
+  await prepTransfer();
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) throw new Error(/confirm/i.test(error.message) ? 'Confirm your email first (check your inbox).'
+    : /invalid/i.test(error.message) ? 'Wrong email or password.' : error.message);
+  location.reload();
+}
+async function doGoogle(){
+  if (isGuest()) {   // link Google to this guest; if that Google account already exists we log into it on return
+    await prepTransfer();
+    const { error } = await sb.auth.linkIdentity({ provider:'google', options:{ redirectTo:here() } });
+    if (error) throw error;
+  } else {
+    const { error } = await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo:here() } });
+    if (error) throw error;
+  }
+}
+
+function sheetUsername(){
+  return new Promise(resolve => {
+    openSheet(`<h2>Pick a username</h2><p>It's shown on your stats (and on leaderboards later).</p>
+      <form class="form" id="uForm" novalidate>
+        <label>Username<input name="username" autocomplete="username" maxlength="20" placeholder="3–20 letters, numbers or _" value="${esc(user.user_metadata?.username || '')}"></label>
+        <p class="err" id="uErr"></p>
+        <button class="btn primary wide" type="submit">Save</button>
+      </form>`, { locked:true });
+    $('uForm').onsubmit = async e => {
+      e.preventDefault(); const form = e.target, name = form.username.value.trim(); busy(form, true);
+      try {
+        if (!/^[A-Za-z0-9_]{3,20}$/.test(name)) throw new Error('Usernames are 3–20 letters, numbers or _.');
+        await rpc('set_username', { p_name:name });
+        profile = { ...profile, username:name }; closeSheet(); resolve();
+      } catch(e){ $('uErr').textContent = /taken|unique/i.test(e.message + (e.hint || '')) ? 'That username is taken.' : e.message; busy(form, false); }
+    };
+  });
+}
+function sheetSetPassword(){
+  return new Promise(resolve => {
+    openSheet(`<h2>Set your password</h2><p>Your email is confirmed. Last step: a password for logging in.</p>
+      <form class="form" id="pForm" novalidate>
+        <label>Password<input name="password" type="password" autocomplete="new-password" minlength="6"></label>
+        <p class="err" id="pErr"></p>
+        <button class="btn primary wide" type="submit">Save password</button>
+      </form>`, { locked:true });
+    $('pForm').onsubmit = async e => {
+      e.preventDefault(); const form = e.target; busy(form, true);
+      const { error } = form.password.value.length < 6 ? { error:new Error('Passwords need at least 6 characters.') }
+        : await sb.auth.updateUser({ password:form.password.value, data:{ needs_password:false } });
+      if (error) { $('pErr').textContent = error.message; busy(form, false); return; }
+      closeSheet(); resolve();
+    };
+  });
+}
+function sheetAccount(){
+  if (!user) {
+    openSheet(`<h2>Offline</h2><p>Couldn't reach the server, so you're playing on simulated pick rates and nothing is saved online.</p>
+      <div class="stack"><button class="btn primary wide" id="xRetry">Try again</button><button class="link" id="xClose">Close</button></div>`);
+    $('xRetry').onclick = () => location.reload();
+  } else if (isGuest()) {
+    openSheet(`<h2>Guest</h2><p>Your packs are saved to this guest account on this device. Make an account to keep them for good and get stats and streaks.</p>
+      <div class="stack"><button class="btn primary wide" id="xUp">Save my results</button><button class="btn wide" id="xIn">Log in</button><button class="link" id="xClose">Close</button></div>`);
+    $('xUp').onclick = () => sheetAuth('signup');
+    $('xIn').onclick = () => sheetAuth('login');
+  } else {
+    openSheet(`<h2>@${esc(profile?.username || 'you')}</h2><p>${esc(user.email || '')}</p>
+      <div class="stack"><button class="btn primary wide" id="xStats">Stats</button><button class="btn wide" id="xOut">Log out</button><button class="link" id="xClose">Close</button></div>`);
+    $('xStats').onclick = () => { closeSheet(); showStats(); };
+    $('xOut').onclick = async () => { await sb.auth.signOut().catch(() => {}); location.reload(); };
+  }
+  $('xClose').onclick = closeSheet;
+}
+function renderAccount(){
+  const b = $('acctBtn'); b.hidden = false;
+  b.textContent = !user ? 'Offline' : isGuest() ? 'Guest · save results' : '@' + (profile?.username || 'account');
+}
+
+/* ---------- stats page ---------- */
+let view = 'game';
+function setView(v){
+  view = v; document.body.dataset.view = v;
+  $('tabStats').setAttribute('aria-pressed', v === 'stats');
+  if (v === 'stats') { $('tabDaily').setAttribute('aria-pressed', false); $('tabRip').setAttribute('aria-pressed', false); }
+}
+async function showStats(){
+  setView('stats');
+  const v = $('statsView');
+  if (!user || isGuest()) {
+    v.innerHTML = `<div class="panel"><span class="prompt big">Track every pull</span>
+      <span class="meta">Stats are for accounts: packs played, streaks, best distance, every card by tier, your rarest pull ever, and your pack history.${user ? ' Your guest packs come with you.' : ''}</span>
+      ${user ? '<button class="btn primary" id="sUp">Save my results</button>' : '<span class="meta">You\'re offline right now.</span>'}</div>`;
+    $('sUp')?.addEventListener('click', () => sheetAuth('signup'));
+    return;
+  }
+  v.innerHTML = '<div class="panel"><span class="meta">Loading your stats…</span></div>';
+  let st;
+  try { st = await rpc('get_my_stats', { p_today:localKey() }, 8000); }
+  catch(e){ v.innerHTML = `<div class="panel"><span class="meta">Couldn't load your stats. Try again in a bit.</span></div>`; return; }
+  if (view !== 'stats') return;
+  const n = x => (x ?? 0).toLocaleString();
+  const tile = (val, label, sub = '') => `<div class="tile"><b>${val}</b><small>${label}</small>${sub ? `<span>${sub}</span>` : ''}</div>`;
+  const name = id => BY_ID.get(id)?.n || `Player #${id}`;
+  const r = st.rarest, rt = r && TIERS.find(t => t.id === r.tier);
+  const fmtDay = d => new Date(d + 'T12:00').toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
+  v.innerHTML = `
+    <h2>@${esc(st.username || profile?.username || 'you')}</h2>
+    <div class="tiles">
+      ${tile(n(st.packs), 'Packs played')}
+      ${tile(n(st.current_streak), 'Current streak', st.current_streak === 1 ? 'day' : 'days')}
+      ${tile(n(st.best_streak), 'Best streak', st.best_streak === 1 ? 'day' : 'days')}
+      ${tile(st.avg_score == null ? '–' : n(st.avg_score), 'Average score', 'out of 700')}
+      ${tile(st.best_score == null ? '–' : n(st.best_score), 'Best score', 'out of 700')}
+      ${tile(st.best_ft == null ? '–' : n(st.best_ft) + ' ft', 'Best distance', st.best_ft == null ? '' : distLabel(st.best_ft))}
+      ${tile(n(st.total_ft) + ' ft', 'Total feet shot', st.total_ft >= 94 ? (st.total_ft / 94).toFixed(1) + ' courts' : '')}
+    </div>
+    <h3>Cards pulled</h3>
+    <div class="tiercount">${TIERS.map(t => `<div class="card ${t.cls}"><span class="tier">${t.short}</span><span class="pn">${n(st.tiers?.[t.id])}</span><span class="pct">${t.pts} pts</span></div>`).join('')}</div>
+    <h3>Rarest pull ever</h3>
+    ${r ? `<div class="rarest"><div class="card ${rt.cls}"><span class="tier">${rt.name}${serial(rt, name(r.player_id)) ? ' · ' + serial(rt, name(r.player_id)) : ''}</span><span class="pn">${esc(name(r.player_id))}</span><span class="pct">${fmtPct(r.pct)}</span></div>
+      <div class="info"><span class="prompt">${esc(r.prompt || '')}</span><span class="meta">Picked by <strong>${fmtPct(r.pct)}</strong> of players · ${fmtDay(r.pack_date)}</span></div></div>`
+      : '<span class="meta">No pulls yet. Rip today\'s pack.</span>'}
+    <h3>Pack history</h3>
+    ${st.history.length ? `<ul class="hist">${st.history.map(h => {
+      const row = Array.from({ length:7 }, (_, i) => { const c = h.cards.find(c => c.i === i); return c ? TIERS.find(t => t.id === c.tier).emoji : '❌'; }).join('');
+      return `<li><span class="d">${fmtDay(h.date)}</span><span class="sc">${h.score}</span><span class="row7" aria-label="${h.cards.length} cards pulled">${row}</span><span class="tag">${h.final ? 'final' : 'live'} · ${Math.max(2, h.score)} ft</span></li>`;
+    }).join('')}</ul>` : '<span class="meta">No packs yet.</span>'}`;
 }
 
 let state = null;
@@ -421,8 +790,8 @@ function render(flipIdx = -1){
   $('total').textContent = totalPts();
   $('foot').textContent = `${DB_NOTE} · ` + (state.mode !== 'daily' ? 'unlimited packs use simulated pick rates'
     : state.online ? 'live pick rates' : 'offline: simulated pick rates');
-  $('tabDaily').setAttribute('aria-pressed', state.mode === 'daily');
-  $('tabRip').setAttribute('aria-pressed', state.mode !== 'daily');
+  $('tabDaily').setAttribute('aria-pressed', view === 'game' && state.mode === 'daily');
+  $('tabRip').setAttribute('aria-pressed', view === 'game' && state.mode !== 'daily');
 
   const strip = `<div class="strip">${state.slots.map((s,i) => miniCard(s, i, i === flipIdx, !done && state.started && i === state.active)).join('')}</div>`;
   const last = lastPull ? `<div class="lastpull ${lastPull.bad ? 'bad' : ''}">${lastPull.html}</div>` : '';
@@ -614,6 +983,7 @@ function renderResults(done){
     <div class="big">${total}<small>/ 700 · shot from ${Math.round(distOf(total))} ft</small></div>
     ${status ? `<div class="meta">${status}</div>` : ''}
     ${best ? `<div class="meta">Best pull: <strong>${esc(best.pick)}</strong>, picked by ${fmtPct(best.pct)} of players.</div>` : ''}
+    ${saveCard()}
     <pre class="share" id="shareTxt">${esc(shareText())}</pre>
     <div class="actions"><button class="btn primary" id="copyBtn">Copy result</button><button class="btn" id="ripBtn2">Rip another pack</button></div>
     <ul class="recap">${state.prompts.map((pid, i) => {
@@ -626,6 +996,16 @@ function renderResults(done){
     catch { const r = document.createRange(); r.selectNodeContents($('shareTxt')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); e.target.textContent = 'Selected, copy it'; }
   });
   $('ripBtn2').addEventListener('click', rip);
+  $('saveBtn')?.addEventListener('click', () => sheetAuth('signup'));
+  $('saveNo')?.addEventListener('click', () => { try { localStorage.setItem('fromthelogo:saveDismissed', state.date); } catch(e){} renderResults(true); });
+}
+/* guests who finish the daily pack get a nudge to keep it */
+function saveCard(){
+  if (!isGuest() || state.mode !== 'daily') return '';
+  try { if (localStorage.getItem('fromthelogo:saveDismissed') === state.date) return ''; } catch(e){}
+  return `<div class="save"><b>Save your results</b>
+    <span class="meta">Make an account to keep today's pack and all your guest packs, and start tracking streaks and stats.</span>
+    <div class="actions"><button class="btn primary" id="saveBtn">Create account</button><button class="link" id="saveNo">Not now</button></div></div>`;
 }
 
 /* ---------- the shooter: every point of pull value pushes him further from the rim ---------- */
@@ -895,25 +1275,36 @@ const Stage = (() => {
   };
 })();
 
-function rip(){ if (!state) return; state = freshState('unlimited', 'rip-' + Date.now() + Math.random()); state.started = true; lastPull = null; msg={text:'',bad:false}; Stage.set(distOf(0)); render(); window.scrollTo({top:0,behavior:'smooth'}); focusInput(); }
+function rip(){ if (!state) return; setView('game'); state = freshState('unlimited', 'rip-' + Date.now() + Math.random()); state.started = true; lastPull = null; msg={text:'',bad:false}; Stage.set(distOf(0)); render(); window.scrollTo({top:0,behavior:'smooth'}); focusInput(); }
 $('tabRip').addEventListener('click', rip);
 async function openDaily(){
   let st = load() || freshState('daily', 'daily-' + localKey());
   if (st.started === undefined) st.started = st.slots.some(s => s.status !== 'open');
   if (!st.online && !st.started) await syncPack(st);   // retry until the pack is started
+  await reconcileDay(st);
   save(st);
   return st;
 }
+$('tabStats').addEventListener('click', () => { if (state) showStats(); });
+$('acctBtn').addEventListener('click', sheetAccount);
 $('tabDaily').addEventListener('click', async () => {
   if (!state) return;
+  setView('game');
   state = await openDaily(); lastPull = null; msg={text:'',bad:false}; Stage.set(distOf(totalPts())); render(); focusInput();
   flushUnsent(state); sendScore(state);
 });
 
 (async function boot(){
   $('page').innerHTML = '<div class="panel"><span class="meta">Loading players…</span></div>';
-  try { await loadPlayers(); }
+  setView('game');
+  try { await Promise.all([loadPlayers(), initAuth()]); }
   catch (e) { $('page').innerHTML = `<div class="panel"><span class="meta">Couldn't load the player database. Refresh to try again.</span></div>`; $('foot').textContent = ''; return; }
+  // Google account already had its own FromTheLogo account: log into that one; it claims the guest's packs on return
+  if (urlErr?.code === 'identity_already_exists' && sb) { await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo:here() } }); return; }
+  if (urlErr) note(urlErr.code === 'access_denied' ? 'Google sign-in was cancelled.' : `Sign-in problem: ${esc(urlErr.msg || urlErr.code)}`, true);
+  if (sb && !user) await sheetWelcome();
+  await afterLogin();
+  renderAccount();
   state = await openDaily();
   Stage.set(distOf(totalPts()));
   render();

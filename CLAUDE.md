@@ -33,8 +33,9 @@ steps and check in before big changes.
   Run on Lanky's own computer (NBA.com isn't reachable from the cloud session), then commit
   players.json.
 - `supabase/schema.sql` — tables + RPC functions. Paste into Supabase SQL editor (safe to
-  re-run). Tables are locked (RLS, no policies); the browser only calls get_or_create_pack,
-  submit_pick, get_pick_rates, submit_score (security definer, validate inputs).
+  re-run, upgrades the earlier device-id version). Tables are locked (RLS, no policies); the
+  browser only calls security-definer functions that validate inputs. Tier cutoffs/points and
+  the 50-answer cold start are duplicated in pick_scores() — keep them in sync with index.html.
 
 ## Backend (Supabase project irtsjiluvpbxgxvteots, publishable key is in index.html)
 - **Daily pack:** every browser builds the same pack from the date; the first player of the
@@ -46,8 +47,25 @@ steps and check in before big changes.
 - **Cold start:** rate = w * real + (1 - w) * simulated, w = min(1, answers / 50).
 - **Settling:** once a date closes, the game re-scores that pack from get_pick_rates on the
   player's next visit and shows "Your <date> pack settled: X final (live score was Y)".
-- **One per device:** random device_id in localStorage; one pick per prompt per device and
-  one submission per device per day (enforced by unique keys). Unlimited mode never saves.
+- **One per user:** one pick per prompt per user and one submission per user per day (unique
+  keys). A second device loads what the account already did today (get_my_day). Skipped
+  prompts (bricks) only reach the server when the pack is finished. Unlimited mode never saves.
+- **Accounts (Supabase Auth):** first visit shows a welcome sheet: "Play as guest" (anonymous
+  sign-in) or "Log in / Sign up" (email + password, or Google). Everyone is a real auth user,
+  so guest picks have a user id from the first pick.
+  - Guest -> sign up keeps the same user: updateUser({email}) then password. If "Confirm
+    email" is on, the guest keeps playing; the email link brings them back to set a password
+    (user_metadata.needs_password). Username rides in user_metadata until it's set.
+  - Guest -> Google: linkIdentity. If that Google account already has its own account
+    (identity_already_exists), the game signs into it instead and claims the guest's history.
+  - Guest -> log in to an existing account: start_transfer() token first, then the account
+    calls claim_transfer() after login. The account keeps its own picks on days both played.
+  - Usernames: profiles table, 3-20 letters/numbers/_, unique case-insensitive.
+  - Saved packs in localStorage are per user: fromthelogo:<user id>:<date>.
+- **Stats page** (accounts only): get_my_stats() computes everything server-side from picks:
+  packs played, current/best streak, avg/best score, best distance, total feet, cards per
+  tier, rarest pull (player, prompt, %), history. Picks store sim_pct so the server can apply
+  the same cold-start blend.
 - **Offline:** every call times out (~4s). No Supabase = simulated rates; unsent picks are
   retried on the next visit while the date is open.
 
@@ -98,4 +116,7 @@ wood court with crowd parallax.
 5. Tune tier ranges with real data.
 
 ## Open questions (ask Lanky)
-- Anti-cheat beyond device id (clearing site data gives a new device). Basic version for now.
+- Anti-cheat: guests can make a new anonymous user by clearing site data. Basic version for now
+  (optional later: Supabase CAPTCHA on anonymous sign-ins).
+- Old anonymous users pile up; picks survive user deletion (user_id set null), so a periodic
+  cleanup of stale guests is safe.
