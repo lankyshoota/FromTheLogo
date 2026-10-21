@@ -24,6 +24,8 @@ response is cached in ./cache, so if it stops (wifi, laptop sleeps, NBA.com
 hiccups) just run it again and it picks up where it left off.
 """
 
+from __future__ import annotations
+
 import json
 import random
 import sys
