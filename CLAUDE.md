@@ -21,8 +21,13 @@ steps and check in before big changes.
 - `build_players.py` — builds `players.json` (every player since 1970-71). Resumable, caches
   to `./cache`. Takes ~2 hours. Fields per player: id, n (name), t (franchises, current
   abbreviations), g (tag letters), s (seasons: [year, team, gp, pts, reb, ast]), aw (award
-  counts), dr ([year, round, pick] or null = undrafted), c (country), pos, col (college),
+  counts: AS, MVP, FMVP, CH, DPOY, ROY, 6MOY, ALLNBA, ALLDEF, ALLROOK, POM, plus ALLNBA1 /
+  ALLDEF1 / ALLROOK1 for first-team), ps (playoff seasons, same format as s), dr ([year,
+  round, pick] or null = undrafted), c (country), pos, col (college, "" if none), ht (inches),
+  wt (lbs), bd (birthdate "YYYY-MM-DD"), num ([[team, jersey], ...] from season rosters),
   from, to, gp, ppg, p (popularity 1-10).
+  Run on Lanky's own computer (NBA.com isn't reachable from the cloud session), then commit
+  players.json.
 - `supabase/schema.sql` — tables + pick-rate view. Paste into Supabase SQL editor.
 
 ## Game rules (decided — don't change without asking)

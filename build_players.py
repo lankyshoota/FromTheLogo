@@ -6,16 +6,20 @@ NBA.com's official stats (through the free nba_api package), and writes
 players.json for the game.
 
 For each player you get:
-  - every team, every season since 1970 (with games, points, rebounds, assists)
-  - awards: All-Star, MVP, Finals MVP, champion, DPOY, ROY, 6MOY, All-NBA
+  - every team, every season since 1970 (with games, points, rebounds, assists),
+    regular season and playoffs
+  - awards: All-Star, MVP, Finals MVP, champion, DPOY, ROY, 6MOY, All-NBA,
+    All-Defensive, All-Rookie, Player of the Month
   - draft year / round / pick (or undrafted), country, position, college
+  - height, weight, birthdate, jersey numbers by team
 
 Run it on your own computer:
   pip install nba_api
   python build_players.py
 
-It makes ~3 requests per player and waits between them so NBA.com doesn't
-block you, so a full run takes a couple of hours. It's resumable: every
+It makes ~3 requests per player plus one per team roster per season (for
+jersey numbers), and waits between them so NBA.com doesn't block you, so a
+full run takes a couple of hours. It's resumable: every
 response is cached in ./cache, so if it stops (wifi, laptop sleeps, NBA.com
 hiccups) just run it again and it picks up where it left off.
 """
@@ -30,6 +34,7 @@ from pathlib import Path
 from nba_api.stats.endpoints import (
     commonallplayers,
     commonplayerinfo,
+    commonteamroster,
     playerawards,
     playercareerstats,
 )
@@ -54,7 +59,14 @@ AWARD_KEYS = {
     "NBA Rookie of the Year": "ROY",
     "NBA Sixth Man of the Year": "6MOY",
     "All-NBA": "ALLNBA",
+    "All-Defensive Team": "ALLDEF",
+    "All-Rookie Team": "ALLROOK",
+    "NBA Player of the Month": "POM",
 }
+
+# (team id, season start year) -> True for every team-season seen, so we can
+# fetch each roster once for jersey numbers
+TEAM_SEASONS = set()
 
 
 def current_season() -> str:
@@ -63,8 +75,13 @@ def current_season() -> str:
     return f"{start}-{str(start + 1)[-2:]}"
 
 
-def fetch(kind: str, pid, call):
-    """Fetch one endpoint, caching the raw response. Retries with backoff."""
+def season_str(year: int) -> str:
+    return f"{year}-{str(year + 1)[-2:]}"
+
+
+def fetch(kind: str, pid, call, required=True):
+    """Fetch one endpoint, caching the raw response. Retries with backoff.
+    If required=False, gives up and returns None instead of exiting."""
     f = CACHE / f"{kind}_{pid}.json"
     if f.exists():
         return json.loads(f.read_text())
@@ -78,6 +95,8 @@ def fetch(kind: str, pid, call):
             wait = 10 * (attempt + 1)
             print(f"   {kind} {pid}: {e.__class__.__name__}, retrying in {wait}s")
             time.sleep(wait)
+    if not required:
+        return None
     sys.exit(f"\nNBA.com stopped answering at {kind} {pid}. "
              "Wait a few minutes and rerun; finished players are cached.")
 
@@ -100,29 +119,47 @@ def build_player(p: dict) -> dict | None:
         player_id=pid, timeout=30).get_dict())
 
     # seasons: one row per team per season (skip the "TOT" combined rows)
-    seasons, teams = [], []
-    for r in rows(career, "SeasonTotalsRegularSeason"):
-        year = int(r["SEASON_ID"][:4])
-        if year < FIRST_SEASON or not r["TEAM_ID"]:
-            continue
-        team = TEAM_BY_ID.get(r["TEAM_ID"], r["TEAM_ABBREVIATION"])
-        seasons.append([year, team, r["GP"] or 0, r["PTS"] or 0, r["REB"] or 0, r["AST"] or 0])
-        if team not in teams:
-            teams.append(team)
+    def season_rows(name):
+        out = []
+        for r in rows(career, name):
+            year = int(r["SEASON_ID"][:4])
+            if year < FIRST_SEASON or not r["TEAM_ID"]:
+                continue
+            team = TEAM_BY_ID.get(r["TEAM_ID"], r["TEAM_ABBREVIATION"])
+            out.append([year, team, r["GP"] or 0, r["PTS"] or 0, r["REB"] or 0, r["AST"] or 0])
+            TEAM_SEASONS.add((r["TEAM_ID"], year))
+        return out
+
+    seasons = season_rows("SeasonTotalsRegularSeason")
     if not seasons:
         return None
+    playoffs = season_rows("SeasonTotalsPostSeason")
+    teams = []
+    for s in seasons:
+        if s[1] not in teams:
+            teams.append(s[1])
 
     aw = {}
     for r in rows(awards, "PlayerAwards"):
         key = AWARD_KEYS.get(r["DESCRIPTION"])
         if key:
             aw[key] = aw.get(key, 0) + 1
+            # first-team All-NBA / All-Defensive / All-Rookie get their own count too
+            if key in ("ALLNBA", "ALLDEF", "ALLROOK") and str(r.get("ALL_NBA_TEAM_NUMBER")) == "1":
+                aw[key + "1"] = aw.get(key + "1", 0) + 1
 
     i = (rows(info, "CommonPlayerInfo") or [{}])[0]
     rnd, pick, dyear = i.get("DRAFT_ROUND"), i.get("DRAFT_NUMBER"), i.get("DRAFT_YEAR")
     drafted = str(rnd).isdigit() and str(pick).isdigit()
     draft = [int(dyear), int(rnd), int(pick)] if drafted and str(dyear).isdigit() else None
     country = (i.get("COUNTRY") or "").strip()
+
+    ht = str(i.get("HEIGHT") or "")          # "6-9" -> 81 inches
+    feet, _, inches = ht.partition("-")
+    height = int(feet) * 12 + int(inches) if feet.isdigit() and inches.isdigit() else None
+    wt = str(i.get("WEIGHT") or "").strip()
+    birth = str(i.get("BIRTHDATE") or "")[:10] or None
+    last_num = str(i.get("JERSEY") or "").strip()
 
     gp = sum(s[2] for s in seasons)
     pts = sum(s[3] for s in seasons)
@@ -146,11 +183,17 @@ def build_player(p: dict) -> dict | None:
         "t": teams,
         "g": tags,
         "s": seasons,
+        "ps": playoffs,                  # playoff seasons, same format as "s"
         "aw": aw,
         "dr": draft,                     # [year, round, pick] or None = undrafted
         "c": country,
         "pos": i.get("POSITION") or "",
-        "col": i.get("SCHOOL") or "",
+        "col": "" if str(i.get("SCHOOL")).strip() in ("None", "") else i["SCHOOL"].strip(),
+        "ht": height,                    # inches
+        "wt": int(wt) if wt.isdigit() else None,   # pounds
+        "bd": birth,                     # "YYYY-MM-DD"
+        "num": [],                       # [[team, "jersey"], ...], filled from rosters
+        "_last_num": last_num,
         "from": seasons[0][0],
         "to": seasons[-1][0],
         "gp": gp,
@@ -179,6 +222,25 @@ def main():
         if k % 25 == 0 or k == len(pool):
             mins = (time.time() - t0) / 60
             print(f"{k}/{len(pool)}  ({p['DISPLAY_FIRST_LAST']})  {mins:.0f} min so far")
+
+    # jersey numbers: one roster request per team-season (cached like the rest)
+    print(f"\nGetting jersey numbers from {len(TEAM_SEASONS)} team rosters...")
+    by_id = {r["id"]: r for r in players}
+    for k, (tid, year) in enumerate(sorted(TEAM_SEASONS, key=lambda x: (x[1], x[0])), 1):
+        roster = fetch(f"roster_{tid}", year, lambda: commonteamroster.CommonTeamRoster(
+            team_id=tid, season=season_str(year), timeout=30).get_dict(), required=False)
+        team = TEAM_BY_ID.get(tid)
+        for r in rows(roster or {}, "CommonTeamRoster"):
+            rec, num = by_id.get(r.get("PLAYER_ID")), str(r.get("NUM") or "").strip()
+            if rec and team and num and [team, num] not in rec["num"]:
+                rec["num"].append([team, num])
+        if k % 100 == 0 or k == len(TEAM_SEASONS):
+            print(f"{k}/{len(TEAM_SEASONS)} rosters")
+    # fallback: players missing from every roster still get their last-known number
+    for r in players:
+        if not r["num"] and r["_last_num"]:
+            r["num"].append([r["t"][-1], r["_last_num"]])
+        del r["_last_num"]
 
     # popularity 1-10 from fame rank: most players are deep cuts, few are stars
     ranked = sorted(players, key=lambda r: r["_fame"])
