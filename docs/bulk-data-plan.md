@@ -1,7 +1,8 @@
 # Plan: build players.json from bulk endpoints
 
-Status: plan only, not built. Nothing here has been checked against live NBA.com
-yet (the cloud session can't reach it), so step 1 is a probe run on Lanky's Mac.
+Status: built as `build_players_bulk.py` (bio, draft, seasons, playoffs, rings, with a
+completeness check and per-player fallback) and `fill_details.py` (awards, birthdates,
+jerseys, slowly). Tested on fake data only; the first real run is the probe.
 
 ## Why
 

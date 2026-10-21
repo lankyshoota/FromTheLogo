@@ -11,7 +11,10 @@ steps and check in before big changes.
 ## Stack
 - Plain HTML/CSS/JS, no framework, no build step. Hosted free on GitHub Pages.
 - Supabase (free tier) for the backend: daily packs + everyone's picks -> live pick rates.
-- Player data: `build_players.py` pulls from NBA.com via the `nba_api` package -> `players.json`.
+- Player data: `build_players_bulk.py` + `fill_details.py` pull from NBA.com via the `nba_api`
+  package -> `players.json`. Lanky downloads the repo as a ZIP (~/Downloads/FromTheLogo-main, in
+  a venv), so give him `curl -fsSLO https://raw.githubusercontent.com/lankyshoota/FromTheLogo/main/<file>`
+  commands, not git pull.
   Do NOT scrape Basketball Reference (their terms forbid it).
 - Goal is $0 to run. Only optional cost later is a domain.
 
@@ -32,13 +35,23 @@ steps and check in before big changes.
   from, to, gp, ppg, p (popularity 1-10).
   Run on Lanky's own computer (NBA.com isn't reachable from the cloud session), then commit
   players.json.
-- `fill_missing.py` — run after build_players.py. ~4% of players get an empty answer from
+- `build_players_bulk.py` — the main builder now (per-player runs got blocked every ~25 players).
+  PlayerIndex + DraftHistory + LeagueGameLog per season (regular + playoffs, player and team
+  logs): ~150 requests. Season lines = game logs summed per player/team/season; champion = winner
+  of the last playoff game; rings from that. Checks game logs against team box scores (seasons
+  before 1985, and later ones that look short); players in seasons that don't add up use
+  PlayerCareerStats. Reuses everything in ./cache. Writes players.json right after the bulk part.
+  `Polite` class: paced, cached requests that pause on blocks (30s, 2m, 15m, 30m, then hourly) and
+  never quit; empty answers are logged in cache/empty_answers.json and skipped after 3.
+- `fill_details.py` — slow background filler for what bulk can't get: awards (likeliest winners
+  first), birthdates/info, team rosters for jersey history. ~10-14 s per request + 5 min rest per
+  40; merges into players.json every 25 items and on Ctrl+C; resumable. Takes a few nights.
+- `fill_missing.py` — for the old per-player builder: run after build_players.py. ~4% of players get an empty answer from
   PlayerCareerStats every time (e.g. 1629152, 1824, 202079). Finds everyone in the cached
   player list who isn't in players.json, gets their seasons from PlayerProfileV2, then
   PlayerDashboardByYearOverYear, then per-season PlayerGameLogs, and builds them with
   build_player() (same cache). Backs up players.json to players.before_fill.json.
-- `docs/bulk-data-plan.md` — plan (not built) to replace per-player calls with bulk endpoints
-  (PlayerIndex, DraftHistory, LeagueGameLog): ~115 requests for bio/draft/seasons.
+- `docs/bulk-data-plan.md` — the plan behind build_players_bulk.py / fill_details.py.
 - `supabase/schema.sql` — tables + RPC functions. Paste into Supabase SQL editor (safe to
   re-run, upgrades the earlier device-id version). Tables are locked (RLS, no policies); the
   browser only calls security-definer functions that validate inputs. Tier cutoffs/points and
