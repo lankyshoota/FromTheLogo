@@ -19,8 +19,7 @@ steps and check in before big changes.
 - `index.html` — the full playable prototype (game, animation, scoring, all in one file).
   Loads `players.json` at startup (falls back to `players.sample.json`, the old hand-typed
   starter list, if it's missing). Picks are tracked by player id, since some names are shared
-  (two Larry Johnsons); typing a shared name counts if any player with it fits. Pick rates
-  are still simulated from popularity.
+  (two Larry Johnsons); typing a shared name counts if any player with it fits.
 - `players.sample.json` — 324-player fallback (fake negative ids). Delete once players.json
   is committed, or keep as a fallback.
 - `build_players.py` — builds `players.json` (every player since 1970-71). Resumable, caches
@@ -33,7 +32,24 @@ steps and check in before big changes.
   from, to, gp, ppg, p (popularity 1-10).
   Run on Lanky's own computer (NBA.com isn't reachable from the cloud session), then commit
   players.json.
-- `supabase/schema.sql` — tables + pick-rate view. Paste into Supabase SQL editor.
+- `supabase/schema.sql` — tables + RPC functions. Paste into Supabase SQL editor (safe to
+  re-run). Tables are locked (RLS, no policies); the browser only calls get_or_create_pack,
+  submit_pick, get_pick_rates, submit_score (security definer, validate inputs).
+
+## Backend (Supabase project irtsjiluvpbxgxvteots, publishable key is in index.html)
+- **Daily pack:** every browser builds the same pack from the date; the first player of the
+  day stores it with get_or_create_pack and everyone else gets the stored one. No cron.
+- **Pack dates** use the player's local date. A date is open while it's that date somewhere
+  on Earth: until 00:00 UTC two days later. After that its picks are final.
+- **Live score:** each daily pick is sent right away; submit_pick returns that player's count
+  and the prompt total, and the pick is scored immediately.
+- **Cold start:** rate = w * real + (1 - w) * simulated, w = min(1, answers / 50).
+- **Settling:** once a date closes, the game re-scores that pack from get_pick_rates on the
+  player's next visit and shows "Your <date> pack settled: X final (live score was Y)".
+- **One per device:** random device_id in localStorage; one pick per prompt per device and
+  one submission per device per day (enforced by unique keys). Unlimited mode never saves.
+- **Offline:** every call times out (~4s). No Supabase = simulated rates; unsent picks are
+  retried on the next visit while the date is open.
 
 ## Game rules (decided — don't change without asking)
 - **7 prompts per day**, same for everyone. Plus "Rip a new pack" unlimited mode.
@@ -82,8 +98,4 @@ wood court with crowd parallax.
 5. Tune tier ranges with real data.
 
 ## Open questions (ask Lanky)
-- Cold start: early players each day have almost no data. Plan: blend the popularity-based
-  estimate with real picks until a prompt has enough answers (e.g. 50+).
-- When is rarity locked? At submit time (instant feedback, noisy early) vs. recalculated at
-  end of day.
-- Anti-cheat (one submission per device per day) — basic version first.
+- Anti-cheat beyond device id (clearing site data gives a new device). Basic version for now.

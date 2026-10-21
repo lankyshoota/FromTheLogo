@@ -168,6 +168,7 @@ details.how p{margin:.6em 0 0;color:var(--muted);max-width:60ch}
     <div class="hud"><b id="hudFt">2 FT</b><small id="hudLbl">Layup</small><span class="hint">tap to shoot</span></div>
   </div>
 
+  <div class="lastpull" id="settledNote" hidden></div>
   <section class="page" id="page" aria-live="polite"></section>
   <section id="results"></section>
   <div class="tabs" role="group" aria-label="Mode">
@@ -280,11 +281,113 @@ function buildPack(seed){
   return ids.slice(0,7);
 }
 function freshState(mode, seed){
-  return { mode, seed, started:false, prompts: buildPack(seed), slots: Array.from({length:7}, () => ({ status:'open', strikes:0 })), active:0 };
+  return { mode, seed, date: localKey(), started:false, prompts: buildPack(seed), slots: Array.from({length:7}, () => ({ status:'open', strikes:0 })), active:0 };
 }
-const STORE = 'fromthelogo:' + localKey();
-function load(){ try { const s = JSON.parse(localStorage.getItem(STORE)); if (s && s.prompts) return s; } catch(e){} return null; }
-function save(){ if (state.mode !== 'daily') return; try { localStorage.setItem(STORE, JSON.stringify(state)); } catch(e){} }
+const storeKey = date => 'fromthelogo:' + date;
+function load(date = localKey()){ try { const s = JSON.parse(localStorage.getItem(storeKey(date))); if (s && s.prompts) { s.date ||= date; return s; } } catch(e){} return null; }
+function save(st = state){ if (st.mode !== 'daily') return; try { localStorage.setItem(storeKey(st.date), JSON.stringify(st)); } catch(e){} }
+
+/* ---------- backend (Supabase). All optional: if it can't be reached, the game runs on simulated rates. ---------- */
+const SB_URL = 'https://irtsjiluvpbxgxvteots.supabase.co';
+const SB_KEY = 'sb_publishable_fpOzn7FpnH4-OnC1PN5jVQ_6n75KR6K';   // publishable key: meant to be public
+const COLD = 50;   // answers a prompt needs before its pick rates are fully real
+async function rpc(fn, args, ms = 4000){
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/rpc/${fn}`, { method:'POST', signal:ctl.signal,
+      headers:{ apikey:SB_KEY, 'Content-Type':'application/json' }, body:JSON.stringify(args) });
+    const body = await res.text();
+    if (!res.ok) throw new Error(`${fn} ${res.status}: ${body}`);
+    return body ? JSON.parse(body) : null;
+  } finally { clearTimeout(t); }
+}
+const DEVICE = (() => {
+  try { let id = localStorage.getItem('fromthelogo:device'); if (!id) localStorage.setItem('fromthelogo:device', id = crypto.randomUUID()); return id; }
+  catch(e){ return crypto.randomUUID(); }
+})();
+/* a date's picks are open while it's that date somewhere on Earth: until 00:00 UTC two days later */
+const closesAt = date => { const [y,m,d] = date.split('-').map(Number); return Date.UTC(y, m-1, d+2); };
+
+/* everyone gets the pack stored in Supabase; the first player of the day stores the one their browser built */
+async function syncPack(st){
+  try {
+    const stored = await rpc('get_or_create_pack', { p_date: st.date, p_prompts: st.prompts.map(id => ({ id, text: PROMPTS[id].text })) });
+    const ids = (stored || []).map(x => x.id);
+    st.online = ids.length === 7 && ids.every(id => PROMPTS[id] && odds(id).list.length);
+    if (st.online) st.prompts = ids;
+  } catch(e){ st.online = false; console.warn('Supabase unreachable, using simulated pick rates.', e); }
+}
+
+/* real picks per prompt: 'date|idx' -> { total, counts: Map(player id -> picks) } */
+const REAL = {};
+function loadRates(date, rows){
+  for (let i = 0; i < 7; i++) REAL[date + '|' + i] = { total:0, counts:new Map() };
+  for (const r of rows || []) { const e = REAL[date + '|' + r.prompt_idx]; e.total += r.picks; e.counts.set(r.player_id, r.picks); }
+}
+/* a player's pick rate: real picks blended with the simulated estimate until the prompt has COLD answers */
+function rateOf(st, idx, playerId){
+  const sim = odds(st.prompts[idx]).map.get(playerId) ?? 0;
+  const r = st.mode === 'daily' && st.online && REAL[st.date + '|' + idx];
+  if (!r || !r.total) return sim;
+  const w = Math.min(1, r.total / COLD);
+  return w * 100 * (r.counts.get(playerId) || 0) / r.total + (1 - w) * sim;
+}
+function rateList(st, idx){
+  return odds(st.prompts[idx]).list.map(x => ({ n:x.n, pct:rateOf(st, idx, x.id) })).sort((a,b) => b.pct - a.pct);
+}
+
+async function sendPick(st, idx, playerId){
+  try {
+    const [r] = await rpc('submit_pick', { p_date:st.date, p_prompt_idx:idx, p_player_id:playerId, p_device:DEVICE }, 3500);
+    const e = REAL[st.date + '|' + idx] ||= { total:0, counts:new Map() };
+    e.total = r.prompt_picks; e.counts.set(playerId, r.player_picks);
+    return true;
+  } catch(e){ (st.unsent ||= []).push([idx, playerId]); return false; }
+}
+/* picks that didn't make it (offline, timeout) go up on the next visit, while the date is still open */
+async function flushUnsent(st){
+  if (!st.unsent?.length) return;
+  if (Date.now() >= closesAt(st.date)) { st.unsent = []; save(st); return; }
+  for (const [idx, id] of [...st.unsent]) {
+    try { await rpc('submit_pick', { p_date:st.date, p_prompt_idx:idx, p_player_id:id, p_device:DEVICE }); }
+    catch(e){ break; }
+    st.unsent = st.unsent.filter(u => u[0] !== idx); save(st);
+  }
+}
+async function sendScore(st){
+  if (st.mode !== 'daily' || !st.online || st.scoreSent || st.slots.some(s => s.status === 'open')) return;
+  if (Date.now() >= closesAt(st.date)) return;
+  try {
+    await rpc('submit_score', { p_date:st.date, p_device:DEVICE, p_total:st.slots.reduce((a,s) => a + (s.pts||0), 0),
+      p_cards:st.slots.map(s => s.status === 'pulled' ? { player_id:s.id, pts:s.pts } : null) });
+    st.scoreSent = true; save(st);
+  } catch(e){}
+}
+/* once a date closes, re-score its pack with the final pick rates */
+async function settle(st){
+  if (st.settled || !st.online || Date.now() < closesAt(st.date)) return false;
+  loadRates(st.date, await rpc('get_pick_rates', { p_date:st.date }));
+  const live = st.slots.reduce((a,s) => a + (s.pts||0), 0);
+  st.slots.forEach((s, i) => {
+    if (s.status !== 'pulled' || s.id == null) return;
+    s.pct = rateOf(st, i, s.id); const t = tierOf(s.pct); s.tier = t.id; s.pts = t.pts;
+  });
+  st.settled = { live, total: st.slots.reduce((a,s) => a + (s.pts||0), 0) };
+  save(st); return true;
+}
+async function settlePast(){
+  let latest = null;
+  for (let k = 7; k >= 1; k--) {
+    const d = new Date(today); d.setDate(d.getDate() - k);
+    const st = load(localKey(d)); if (!st) continue;
+    try { await flushUnsent(st); if (await settle(st)) latest = st; } catch(e){}
+  }
+  if (!latest) return;
+  const day = new Date(latest.date + 'T12:00').toLocaleDateString(undefined, { month:'short', day:'numeric' });
+  const { live, total } = latest.settled;
+  $('settledNote').innerHTML = `Your ${day} pack settled: <strong>${total}</strong> final` + (total !== live ? ` (live score was ${live})` : ' (same as live)');
+  $('settledNote').hidden = false;
+}
 
 let state = null;
 let sel = 0, msg = { text:'', bad:false };
@@ -316,6 +419,8 @@ function render(flipIdx = -1){
     ? `Pack #${dayNum} · ${today.toLocaleDateString(undefined,{month:'short',day:'numeric'})}`
     : 'Unlimited pack';
   $('total').textContent = totalPts();
+  $('foot').textContent = `${DB_NOTE} · ` + (state.mode !== 'daily' ? 'unlimited packs use simulated pick rates'
+    : state.online ? 'live pick rates' : 'offline: simulated pick rates');
   $('tabDaily').setAttribute('aria-pressed', state.mode === 'daily');
   $('tabRip').setAttribute('aria-pressed', state.mode !== 'daily');
 
@@ -398,7 +503,7 @@ function setStatus(text, bad){
   st.classList.toggle('bad', !!bad);
 }
 function tryGuess(){
-  const inp = $('guess'); if (!inp) return;
+  const inp = $('guess'); if (!inp || state.slots[state.active]?.status !== 'open') return;
   const raw = inp.value.trim(); if (!raw) return;
   const same = exactMatch(raw);
   if (same.length) {
@@ -454,7 +559,7 @@ function onKey(e){
 }
 function focusInput(){ const i = $('guess'); if (i) i.focus({preventScroll:true}); }
 
-function submit(cands){
+async function submit(cands){
   const i = state.active, pid = state.prompts[i], slot = state.slots[i];
   const p = cands.filter(PROMPTS[pid].test).sort((a,b) => b.p - a.p)[0], name = cands[0].n;
   if (!p) {
@@ -465,7 +570,11 @@ function submit(cands){
     $('panel')?.classList.add('shake');
     focusInput(); return;
   }
-  const pct = odds(pid).map.get(p.id), t = tierOf(pct);
+  // stop the clock and lock the input while the pick goes up
+  state.slots[i] = { status:'pending', strikes:slot.strikes };
+  ['guess','shootBtn','skipBtn'].forEach(id => { const el = $(id); if (el) el.disabled = true; });
+  if (state.mode === 'daily' && state.online) await sendPick(state, i, p.id);
+  const pct = rateOf(state, i, p.id), t = tierOf(pct);
   state.slots[i] = { status:'pulled', pick:name, id:p.id, pct, tier:t.id, pts:pointsOf(pct), strikes:slot.strikes };
   msg = {text:'',bad:false};
   lastPull = { html:`<strong>${esc(name)}</strong> · ${t.name}${serial(t,name) ? ' ' + serial(t,name) : ''} · picked by ${fmtPct(pct)} · +${pointsOf(pct)}`, bad:false };
@@ -475,6 +584,7 @@ function submit(cands){
 function next(i){
   state.active = state.slots.findIndex(s => s.status === 'open');
   save(); render(i);
+  if (state.active < 0) sendScore(state);
   if (state.active >= 0) focusInput();
 }
 
@@ -485,18 +595,29 @@ function shareText(){
   const d = distOf(total);
   return `${head}\n${row}\n${total} / 700 · 🏀 ${Math.round(d)} ft (${distLabel(d)})`;
 }
+let ratesFor = '';   // which daily pack's full pick rates have been fetched for the recap
 function renderResults(done){
   if (!done) { $('results').innerHTML = ''; return; }
+  const live = state.mode === 'daily' && state.online;
+  if (live && ratesFor !== state.date) {
+    ratesFor = state.date;
+    rpc('get_pick_rates', { p_date:state.date }).then(rows => { loadRates(state.date, rows); renderResults(true); }).catch(() => {});
+  }
+  const lock = new Date(closesAt(state.date)).toLocaleString(undefined, { weekday:'short', hour:'numeric', minute:'2-digit' });
+  const status = !live ? (state.mode === 'daily' ? 'Offline: scored on simulated pick rates.' : '')
+    : state.settled ? 'Final score: pick rates are locked.'
+    : `Live score from everyone's picks so far. Final rarity locks ${lock}.`;
   const total = state.slots.reduce((a,s)=>a+(s.pts||0),0);
   const best = state.slots.filter(s=>s.status==='pulled').sort((a,b)=>a.pct-b.pct)[0];
   $('results').innerHTML = `<div class="results">
     <h2>Pack opened</h2>
     <div class="big">${total}<small>/ 700 · shot from ${Math.round(distOf(total))} ft</small></div>
+    ${status ? `<div class="meta">${status}</div>` : ''}
     ${best ? `<div class="meta">Best pull: <strong>${esc(best.pick)}</strong>, picked by ${fmtPct(best.pct)} of players.</div>` : ''}
     <pre class="share" id="shareTxt">${esc(shareText())}</pre>
     <div class="actions"><button class="btn primary" id="copyBtn">Copy result</button><button class="btn" id="ripBtn2">Rip another pack</button></div>
-    <ul class="recap">${state.prompts.map(pid => {
-      const l = odds(pid).list, top = l[0], deep = l[l.length-1];
+    <ul class="recap">${state.prompts.map((pid, i) => {
+      const l = rateList(state, i), top = l[0], deep = l[l.length-1];
       return `<li><b>${esc(PROMPTS[pid].text)}</b>Most picked: ${esc(top.n)} (${fmtPct(top.pct)}) · Deepest in the vault: ${esc(deep.n)} (${fmtPct(deep.pct)}) · ${l.length} fit</li>`;
     }).join('')}</ul>
   </div>`;
@@ -776,17 +897,27 @@ const Stage = (() => {
 
 function rip(){ if (!state) return; state = freshState('unlimited', 'rip-' + Date.now() + Math.random()); state.started = true; lastPull = null; msg={text:'',bad:false}; Stage.set(distOf(0)); render(); window.scrollTo({top:0,behavior:'smooth'}); focusInput(); }
 $('tabRip').addEventListener('click', rip);
-$('tabDaily').addEventListener('click', () => { if (!state) return; state = load() || freshState('daily','daily-' + localKey()); lastPull = null; msg={text:'',bad:false}; Stage.set(distOf(totalPts())); render(); focusInput(); });
+async function openDaily(){
+  let st = load() || freshState('daily', 'daily-' + localKey());
+  if (st.started === undefined) st.started = st.slots.some(s => s.status !== 'open');
+  if (!st.online && !st.started) await syncPack(st);   // retry until the pack is started
+  save(st);
+  return st;
+}
+$('tabDaily').addEventListener('click', async () => {
+  if (!state) return;
+  state = await openDaily(); lastPull = null; msg={text:'',bad:false}; Stage.set(distOf(totalPts())); render(); focusInput();
+  flushUnsent(state); sendScore(state);
+});
 
 (async function boot(){
   $('page').innerHTML = '<div class="panel"><span class="meta">Loading players…</span></div>';
   try { await loadPlayers(); }
   catch (e) { $('page').innerHTML = `<div class="panel"><span class="meta">Couldn't load the player database. Refresh to try again.</span></div>`; $('foot').textContent = ''; return; }
-  $('foot').textContent = `${DB_NOTE} · pick rates simulated until the live backend is on`;
-  state = load() || freshState('daily', 'daily-' + localKey());
-  if (state.started === undefined) state.started = state.slots.some(s => s.status !== 'open');
+  state = await openDaily();
   Stage.set(distOf(totalPts()));
   render();
+  flushUnsent(state); sendScore(state); settlePast();
 })();
 </script>
 
