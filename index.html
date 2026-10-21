@@ -242,6 +242,7 @@ body[data-view="stats"] .g{display:none}
 
 <dialog class="sheet" id="sheet"><div id="sheetBody"></div></dialog>
 
+<script src="prompts.js"></script>
 <script>
 /* Player database. players.json is built by build_players.py; until it exists the
    game falls back to players.sample.json (the original hand-typed starter list). */
@@ -259,6 +260,7 @@ async function loadPlayers(){
     } catch (e) {}
   }
   if (!PLAYERS.length) throw new Error('no player data');
+  GEN = FTLPrompts.create(PLAYERS);
   for (const p of PLAYERS) {
     p.g = p.g || ''; p.k = norm(p.n); BY_ID.set(p.id, p);
     // same name, different players (two Larry Johnsons, etc.) share one entry
@@ -267,31 +269,11 @@ async function loadPlayers(){
   }
 }
 
-const TEAM = {ATL:'Hawks',BOS:'Celtics',BKN:'Nets',CHA:'Charlotte',CHI:'Bulls',CLE:'Cavaliers',DAL:'Mavericks',DEN:'Nuggets',DET:'Pistons',GSW:'Warriors',HOU:'Rockets',IND:'Pacers',LAC:'Clippers',LAL:'Lakers',MEM:'Grizzlies',MIA:'Heat',MIL:'Bucks',MIN:'Timberwolves',NOP:'New Orleans',NYK:'Knicks',OKC:'Thunder/Sonics',ORL:'Magic',PHI:'76ers',PHX:'Suns',POR:'Trail Blazers',SAC:'Kings',SAS:'Spurs',TOR:'Raptors',UTA:'Jazz',WAS:'Wizards/Bullets'};
-const has = (p,...teams) => teams.every(t => p.t.includes(t));
-const tag = (p,c) => p.g.includes(c);
-const pair = (a,b) => ({ text:`Played for the ${TEAM[a]} and the ${TEAM[b]}`, test:p => has(p,a,b) });
-
-const PROMPTS = {
-  p1: pair('LAL','MIA'), p2: pair('BOS','CLE'), p3: pair('GSW','CLE'), p4: pair('CHI','MIA'),
-  p5: pair('NYK','BKN'), p6: pair('HOU','LAL'), p7: pair('SAS','LAL'), p8: pair('OKC','HOU'),
-  p9: pair('PHX','DAL'), p10: pair('BOS','BKN'), p11: pair('LAC','LAL'), p13: pair('SAC','MEM'),
-  p14: { text:'Played in Charlotte and New Orleans', test:p => has(p,'CHA','NOP') },
-  p24: pair('ORL','HOU'), p25: pair('GSW','NYK'), p28: pair('MIN','BOS'), p29: pair('TOR','DAL'),
-  p30: pair('PHI','DEN'), p31: pair('ATL','MIL'), p32: pair('MIA','CLE'),
-  p12: { text:'Played for the Pistons and won a ring (any team)', test:p => has(p,'DET') && tag(p,'C') },
-  p15: { text:'Won a ring as a 2nd-rounder or undrafted', test:p => tag(p,'C') && tag(p,'R') },
-  p16: { text:'International-born champion', test:p => tag(p,'C') && tag(p,'I') },
-  p17: { text:'No. 1 overall pick who played for 3+ franchises', test:p => tag(p,'1') && p.t.length >= 3 },
-  p18: { text:'Played for 7 or more franchises', test:p => p.t.length >= 7 },
-  p19: { text:'All-Star who was a 2nd-rounder or undrafted', test:p => tag(p,'A') && tag(p,'R') },
-  p20: { text:'Played for the Lakers, never made an All-Star game', test:p => has(p,'LAL') && !tag(p,'A') },
-  p21: { text:'Spent his whole career with one franchise', test:p => p.t.length === 1 },
-  p22: { text:'International-born All-Star', test:p => tag(p,'A') && tag(p,'I') },
-  p23: { text:'Played for the Raptors and won a ring (any team)', test:p => has(p,'TOR') && tag(p,'C') },
-  p26: { text:'MVP who played for 3+ franchises', test:p => tag(p,'M') && p.t.length >= 3 },
-  p27: { text:'Played for the Warriors, never made an All-Star game', test:p => has(p,'GSW') && !tag(p,'A') },
-};
+/* Prompts come from prompts.js, built from players.json once it loads. A prompt's id
+   describes it ("pair:LAL:MIA"), so PROMPTS[id] works for any id, including ones in
+   packs stored before players.json changed. Unknown ids give undefined. */
+let GEN = null;
+const PROMPTS = new Proxy({}, { get: (_, id) => (GEN && typeof id === 'string' && GEN.get(id)) || undefined });
 
 /* seeded randomness */
 function hash(s){let h=1779033703^s.length;for(let i=0;i<s.length;i++){h=Math.imul(h^s.charCodeAt(i),3432918353);h=h<<13|h>>>19}return ()=>{h=Math.imul(h^h>>>16,2246822507);h=Math.imul(h^h>>>13,3266489909);return (h^=h>>>16)>>>0}}
@@ -328,17 +310,20 @@ const today = new Date(); today.setHours(0,0,0,0);
 const dayNum = Math.round((today - DAY0)/864e5) + 1;
 
 function buildPack(seed){
-  const r = rng(seed);
-  const ids = Object.keys(PROMPTS).filter(id => odds(id).list.length >= 4);
-  for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(r()*(i+1)); [ids[i],ids[j]] = [ids[j],ids[i]]; }
-  return ids.slice(0,7);
+  return seed.startsWith('daily-') ? GEN.daily(seed.slice(6)) : GEN.random(rng(seed));
 }
 function freshState(mode, seed){
   return { mode, seed, date: localKey(), started:false, prompts: buildPack(seed), slots: Array.from({length:7}, () => ({ status:'open', strikes:0 })), active:0 };
 }
 /* saved packs are per user: fromthelogo:<user id>:<date> ("local" when offline with no user) */
 const storeKey = (date, uid = user?.id || 'local') => `fromthelogo:${uid}:${date}`;
-function load(date = localKey()){ try { const s = JSON.parse(localStorage.getItem(storeKey(date))); if (s && s.prompts) { s.date ||= date; return s; } } catch(e){} return null; }
+function load(date = localKey()){
+  try {
+    const s = JSON.parse(localStorage.getItem(storeKey(date)));
+    if (s && s.prompts && s.prompts.length === 7 && s.prompts.every(id => PROMPTS[id])) { s.date ||= date; return s; }
+  } catch(e){}
+  return null;
+}
 function save(st = state){ if (st.mode !== 'daily') return; try { localStorage.setItem(storeKey(st.date), JSON.stringify(st)); } catch(e){} }
 
 /* ---------- backend (Supabase). All optional: if it can't be reached, the game runs on simulated rates. ---------- */

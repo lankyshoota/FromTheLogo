@@ -322,6 +322,12 @@ def apply_cached_details(rec: dict, rings: int):
     pid = rec["id"]
     awards = cached(f"awards_{pid}")
     rec["aw"] = parse_awards(awards) if awards else ({"CH": rings} if rings else {})
+    # "ad": awards checked. The game only offers award prompts once nearly every player has it,
+    # so a missing award can't make a right answer count as wrong.
+    if awards:
+        rec["ad"] = 1
+    else:
+        rec.pop("ad", None)
     info = cached(f"info_{pid}")
     if info:
         i = (bp.rows(info, "CommonPlayerInfo") or [{}])[0]
@@ -376,7 +382,13 @@ def finish(players: list[dict]) -> list[dict]:
         r["p"] = max(1, round(1 + 9 * (i / max(1, len(ranked) - 1)) ** 4))
     keys = ["id", "n", "t", "g", "s", "ps", "aw", "dr", "c", "pos", "col", "ht", "wt", "bd", "num",
             "from", "to", "gp", "ppg", "p"]
-    return sorted(({k: r[k] for k in keys} for r in players), key=lambda r: r["n"])
+    out = []
+    for r in players:
+        o = {k: r[k] for k in keys}
+        if r.get("ad"):
+            o["ad"] = 1
+        out.append(o)
+    return sorted(out, key=lambda r: r["n"])
 
 
 def write_players(players: list[dict]):

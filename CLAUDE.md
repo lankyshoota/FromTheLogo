@@ -23,6 +23,20 @@ steps and check in before big changes.
   Loads `players.json` at startup (falls back to `players.sample.json`, the old hand-typed
   starter list, if it's missing). Picks are tracked by player id, since some names are shared
   (two Larry Johnsons); typing a shared name counts if any player with it fits.
+- `prompts.js` — prompt generator, loaded by index.html (also runs in Node for tests). Builds
+  every prompt the data supports (team pairs, team + decade, team stat seasons, titles with a
+  team, undrafted/2nd-round/international/7-footer + team, college (+ team), country, draft pick
+  and class, rings, career length, games, playoff games, career/season stats; award prompts too,
+  but only once ~all players have "ad"). Keeps a prompt if it has 10+ answers, 3+ deep cuts
+  (answers the simulated pick rates put under 2%) and 2+ well-known answers (popularity 6+).
+  Difficulty by well-known answers: 20+ easy, 8-19 medium, 2-7 hard. Daily pack = 2 easy,
+  3 medium, 2 hard, easy to hard; max one prompt per family (two team pairs allowed), no team
+  twice. Prompt ids describe the prompt ("pair:LAL:MIA", "ppg:SAC:20", "col:Duke") so stored
+  packs can always be rebuilt. Each prompt is hashed to one day of a 28-day cycle, so no repeats
+  within 28 days (rarely 14 when a day borrows). Champions 1970-2024 are a fixed list; later
+  seasons come from the data. Unlimited mode picks randomly with the same rules.
+- `check_players.py` — sanity checks for players.json (team codes, impossible games, rings vs
+  champions, misattributed old game-log rows) and, with ./cache, who's missing vs the old list.
 - `players.sample.json` — 324-player fallback (fake negative ids). Delete once players.json
   is committed, or keep as a fallback.
 - `build_players.py` — builds `players.json` (every player since 1970-71). Resumable, caches
@@ -32,7 +46,8 @@ steps and check in before big changes.
   ALLDEF1 / ALLROOK1 for first-team), ps (playoff seasons, same format as s), dr ([year,
   round, pick] or null = undrafted), c (country), pos, col (college, "" if none), ht (inches),
   wt (lbs), bd (birthdate "YYYY-MM-DD"), num ([[team, jersey], ...] from season rosters),
-  from, to, gp, ppg, p (popularity 1-10).
+  from, to, gp, ppg, p (popularity 1-10), ad (1 = awards checked; only on players whose awards
+  have been fetched, so award prompts can wait until nearly everyone has it).
   Run on Lanky's own computer (NBA.com isn't reachable from the cloud session), then commit
   players.json.
 - `build_players_bulk.py` — the main builder now (per-player runs got blocked every ~25 players).
@@ -52,6 +67,8 @@ steps and check in before big changes.
   PlayerDashboardByYearOverYear, then per-season PlayerGameLogs, and builds them with
   build_player() (same cache). Backs up players.json to players.before_fill.json.
 - `docs/bulk-data-plan.md` — the plan behind build_players_bulk.py / fill_details.py.
+- `supabase/reset_test_data.sql` — wipes packs, picks, scores and transfer tokens (keeps
+  accounts). Run after schema.sql.
 - `supabase/schema.sql` — tables + RPC functions. Paste into Supabase SQL editor (safe to
   re-run, upgrades the earlier device-id version). Tables are locked (RLS, no policies); the
   browser only calls security-definer functions that validate inputs. Tier cutoffs/points and
@@ -129,9 +146,8 @@ wood court with crowd parallax.
 ## Roadmap
 1. Get the project on GitHub + GitHub Pages.
 2. Run `build_players.py`, load `players.json` into the game instead of `RAW`.
-3. Auto-generate prompts from the data (team pairs, awards, draft, college, country,
-   stat thresholds like "averaged 20+ PPG for the Kings"). Every prompt must have enough
-   valid answers, including some deep cuts.
+3. Auto-generate prompts from the data (done: prompts.js). Award prompts switch on by themselves
+   once fill_details.py has checked awards for ~99% of players.
 4. Supabase: daily pack per date, store picks, compute real pick rates.
 5. Tune tier ranges with real data.
 
