@@ -32,6 +32,13 @@ steps and check in before big changes.
   from, to, gp, ppg, p (popularity 1-10).
   Run on Lanky's own computer (NBA.com isn't reachable from the cloud session), then commit
   players.json.
+- `fill_missing.py` — run after build_players.py. ~4% of players get an empty answer from
+  PlayerCareerStats every time (e.g. 1629152, 1824, 202079). Finds everyone in the cached
+  player list who isn't in players.json, gets their seasons from PlayerProfileV2, then
+  PlayerDashboardByYearOverYear, then per-season PlayerGameLogs, and builds them with
+  build_player() (same cache). Backs up players.json to players.before_fill.json.
+- `docs/bulk-data-plan.md` — plan (not built) to replace per-player calls with bulk endpoints
+  (PlayerIndex, DraftHistory, LeagueGameLog): ~115 requests for bio/draft/seasons.
 - `supabase/schema.sql` — tables + RPC functions. Paste into Supabase SQL editor (safe to
   re-run, upgrades the earlier device-id version). Tables are locked (RLS, no policies); the
   browser only calls security-definer functions that validate inputs. Tier cutoffs/points and
