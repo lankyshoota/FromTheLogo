@@ -20,8 +20,11 @@ Run it on your own computer:
 It makes ~3 requests per player plus one per team roster per season (for
 jersey numbers), and waits between them so NBA.com doesn't block you, so a
 full run takes a couple of hours. It's resumable: every
-response is cached in ./cache, so if it stops (wifi, laptop sleeps, NBA.com
-hiccups) just run it again and it picks up where it left off.
+good response is cached in ./cache, so if it stops just run it again and it
+picks up where it left off. It's also built to run overnight unattended: if
+NBA.com stops answering it waits 5 minutes and keeps going, and only gives up
+after an hour of silence. Players NBA.com sends empty data for (usually
+throttling) get a second, slower try at the end.
 """
 
 from __future__ import annotations
@@ -45,7 +48,10 @@ from nba_api.stats.library.http import NBAStatsHTTP
 from nba_api.stats.static import teams as static_teams
 
 FIRST_SEASON = 1970          # 1970-71 is the earliest season included
-SLEEP = 0.7                  # seconds between requests (be polite to NBA.com)
+SLEEP = 1.5                  # seconds between requests, plus up to 0.5s jitter
+SLOW = 5.0                   # seconds between requests in the second pass
+PAUSE = 300                  # NBA.com stopped answering: wait 5 minutes, then keep going
+GIVE_UP = 3600               # ...unless there's been no good response for an hour
 CACHE = Path("cache")
 OUT = Path("players.json")
 
@@ -94,7 +100,8 @@ _session = requests.Session()
 _session.hooks["response"].append(_raise_retryable)
 NBAStatsHTTP.set_session(_session)
 
-# NBA.com answered, but the data wasn't what we expected. Retrying won't help.
+# NBA.com answered, but not with usable data. Usually throttling (an empty or
+# error body), so these aren't cached: the player gets another try later.
 PARSE_ERRORS = (KeyError, ValueError, TypeError, IndexError, AttributeError)
 
 
@@ -102,41 +109,76 @@ class BadResponse(Exception):
     pass
 
 
-def fetch(kind: str, pid, call, required=True):
-    """Fetch one endpoint, caching the raw response.
-    Network errors (timeouts, connection errors, 429/5xx) retry with backoff.
-    Unusable data is cached as null so it isn't refetched, then raises
-    BadResponse (or returns None if required=False)."""
+def valid(data) -> bool:
+    """A real NBA.com stats response has a non-empty resultSets list."""
+    return isinstance(data, dict) and isinstance(data.get("resultSets"), list) and bool(data["resultSets"])
+
+
+def purge_bad_cache():
+    """Delete cached responses that are empty or errors, so they're fetched again."""
+    bad = 0
+    for f in CACHE.glob("*.json"):
+        try:
+            ok = valid(json.loads(f.read_text()))
+        except ValueError:
+            ok = False
+        if not ok:
+            f.unlink()
+            bad += 1
+    if bad:
+        print(f"Removed {bad} empty or bad cached responses; they'll be fetched again.")
+
+
+def pause(seconds: float):
+    time.sleep(seconds + random.random() * 0.5)
+
+
+last_ok = time.time()        # last time NBA.com sent usable data
+bad_streak = 0               # unusable responses in a row
+
+
+def fetch(kind: str, pid, call, delay=SLEEP):
+    """Fetch one endpoint, caching only good responses.
+    Network errors (timeouts, connection errors, 429/5xx) retry: quickly at
+    first, then every 5 minutes, until there's been no good response for an
+    hour. Unusable data raises BadResponse (not cached, so it's retried later)."""
+    global last_ok, bad_streak
     f = CACHE / f"{kind}_{pid}.json"
     if f.exists():
-        data = json.loads(f.read_text())
-        if data is None:
-            if not required:
-                return None
-            raise BadResponse(f"{kind} {pid}")
-        return data
-    for attempt in range(6):
+        return json.loads(f.read_text())
+    attempt = 0
+    while True:
         try:
             data = call()
+            if not valid(data):
+                raise KeyError("resultSets")
         except PARSE_ERRORS as e:
-            print(f"   {kind} {pid}: unusable response ({e.__class__.__name__}: {e}), skipping")
-            f.write_text("null")
-            time.sleep(SLEEP + random.random() * 0.4)
-            if not required:
-                return None
+            bad_streak += 1
+            print(f"   {kind} {pid}: unusable response ({e.__class__.__name__}: {e}), will retry later")
+            if bad_streak >= 5:   # a run of empty answers means we're being throttled: back off
+                print(f"   {bad_streak} unusable responses in a row, probably throttling. "
+                      f"Pausing {PAUSE // 60} minutes...")
+                time.sleep(PAUSE)
+                bad_streak = 0
+            else:
+                pause(delay)
             raise BadResponse(f"{kind} {pid}") from e
         except requests.exceptions.RequestException as e:
-            wait = 10 * (attempt + 1)
-            print(f"   {kind} {pid}: {e.__class__.__name__}, retrying in {wait}s")
+            attempt += 1
+            silent = time.time() - last_ok
+            if silent > GIVE_UP:
+                sys.exit(f"\nNo good response from NBA.com for {silent / 60:.0f} minutes (stuck at {kind} {pid}). "
+                         "Giving up for now; rerun later and it picks up where it left off.")
+            wait = 10 * attempt if attempt <= 3 else PAUSE
+            print(f"   {kind} {pid}: {e.__class__.__name__}, retrying in "
+                  f"{wait if wait < 60 else str(wait // 60) + ' min'}"
+                  f"{'' if wait < 60 else f' (no good response for {silent / 60:.0f} min)'}")
             time.sleep(wait)
             continue
+        last_ok, bad_streak = time.time(), 0
         f.write_text(json.dumps(data))
-        time.sleep(SLEEP + random.random() * 0.4)
+        pause(delay)
         return data
-    if not required:
-        return None
-    sys.exit(f"\nNBA.com stopped answering at {kind} {pid}. "
-             "Wait a few minutes and rerun; finished players are cached.")
 
 
 def rows(resp: dict, name: str) -> list[dict]:
@@ -146,15 +188,15 @@ def rows(resp: dict, name: str) -> list[dict]:
     return []
 
 
-def build_player(p: dict) -> dict | None:
+def build_player(p: dict, delay=SLEEP) -> dict | None:
     pid = p["PERSON_ID"]
 
     career = fetch("career", pid, lambda: playercareerstats.PlayerCareerStats(
-        player_id=pid, per_mode36="Totals", timeout=30).get_dict())
+        player_id=pid, per_mode36="Totals", timeout=30).get_dict(), delay)
     awards = fetch("awards", pid, lambda: playerawards.PlayerAwards(
-        player_id=pid, timeout=30).get_dict())
+        player_id=pid, timeout=30).get_dict(), delay)
     info = fetch("info", pid, lambda: commonplayerinfo.CommonPlayerInfo(
-        player_id=pid, timeout=30).get_dict())
+        player_id=pid, timeout=30).get_dict(), delay)
 
     # seasons: one row per team per season (skip the "TOT" combined rows)
     def season_rows(name):
@@ -243,45 +285,86 @@ def build_player(p: dict) -> dict | None:
 
 def main():
     CACHE.mkdir(exist_ok=True)
+    purge_bad_cache()
     season = current_season()
     print(f"Getting the full player list (through {season})...")
-    try:
-        everyone = fetch("all", season, lambda: commonallplayers.CommonAllPlayers(
-            is_only_current_season=0, league_id="00", season=season, timeout=60).get_dict())
-    except BadResponse:
-        sys.exit(f"\nNBA.com sent an unusable player list. Delete cache/all_{season}.json "
-                 "and rerun in a few minutes.")
+    while True:   # can't do anything without the list, so keep trying (fetch exits after an hour of silence)
+        try:
+            everyone = fetch("all", season, lambda: commonallplayers.CommonAllPlayers(
+                is_only_current_season=0, league_id="00", season=season, timeout=60).get_dict())
+            break
+        except BadResponse:
+            if time.time() - last_ok > GIVE_UP:
+                sys.exit("\nNBA.com kept sending an unusable player list for an hour. Rerun later.")
+            print(f"   Player list came back empty, trying again in {PAUSE // 60} minutes...")
+            time.sleep(PAUSE)
     pool = [p for p in rows(everyone, "CommonAllPlayers")
             if p.get("GAMES_PLAYED_FLAG") == "Y" and str(p.get("TO_YEAR", "0")).isdigit()
             and int(p["TO_YEAR"]) >= FIRST_SEASON]
     print(f"{len(pool)} players played from {FIRST_SEASON}-{str(FIRST_SEASON + 1)[-2:]} on.\n")
 
-    players, skipped, t0 = [], [], time.time()
+    players, retry, t0 = [], [], time.time()
     for k, p in enumerate(pool, 1):
         try:
             rec = build_player(p)
         except BadResponse:
-            skipped.append((p["PERSON_ID"], p["DISPLAY_FIRST_LAST"]))
+            retry.append(p)
             rec = None
         if rec:
             players.append(rec)
         if k % 25 == 0 or k == len(pool):
             mins = (time.time() - t0) / 60
-            print(f"{k}/{len(pool)}  ({p['DISPLAY_FIRST_LAST']})  {mins:.0f} min so far")
+            print(f"{k}/{len(pool)}  ({p['DISPLAY_FIRST_LAST']})  {mins:.0f} min so far"
+                  f"{f', {len(retry)} to retry' if retry else ''}")
+
+    # second pass: players that got empty responses, after a breather and more slowly
+    skipped = []
+    if retry:
+        print(f"\nSecond pass: retrying {len(retry)} players more slowly "
+              f"(starting in {PAUSE // 60} minutes)...")
+        time.sleep(PAUSE)
+        for k, p in enumerate(retry, 1):
+            try:
+                rec = build_player(p, delay=SLOW)
+            except BadResponse:
+                skipped.append((p["PERSON_ID"], p["DISPLAY_FIRST_LAST"]))
+                rec = None
+            if rec:
+                players.append(rec)
+            if k % 25 == 0 or k == len(retry):
+                print(f"{k}/{len(retry)} retried, {len(skipped)} still failing")
 
     # jersey numbers: one roster request per team-season (cached like the rest)
     print(f"\nGetting jersey numbers from {len(TEAM_SEASONS)} team rosters...")
     by_id = {r["id"]: r for r in players}
-    for k, (tid, year) in enumerate(sorted(TEAM_SEASONS, key=lambda x: (x[1], x[0])), 1):
+
+    def add_roster(tid, year, delay):
         roster = fetch(f"roster_{tid}", year, lambda: commonteamroster.CommonTeamRoster(
-            team_id=tid, season=season_str(year), timeout=30).get_dict(), required=False)
+            team_id=tid, season=season_str(year), timeout=30).get_dict(), delay)
         team = TEAM_BY_ID.get(tid)
-        for r in rows(roster or {}, "CommonTeamRoster"):
+        for r in rows(roster, "CommonTeamRoster"):
             rec, num = by_id.get(r.get("PLAYER_ID")), str(r.get("NUM") or "").strip()
             if rec and team and num and [team, num] not in rec["num"]:
                 rec["num"].append([team, num])
+
+    roster_retry = []
+    for k, (tid, year) in enumerate(sorted(TEAM_SEASONS, key=lambda x: (x[1], x[0])), 1):
+        try:
+            add_roster(tid, year, SLEEP)
+        except BadResponse:
+            roster_retry.append((tid, year))
         if k % 100 == 0 or k == len(TEAM_SEASONS):
             print(f"{k}/{len(TEAM_SEASONS)} rosters")
+    # rosters only add jersey numbers, so one slower retry is enough
+    missing_rosters = 0
+    if roster_retry:
+        print(f"Retrying {len(roster_retry)} rosters more slowly (starting in {PAUSE // 60} minutes)...")
+        time.sleep(PAUSE)
+        for tid, year in roster_retry:
+            try:
+                add_roster(tid, year, SLOW)
+            except BadResponse:
+                missing_rosters += 1
     # fallback: players missing from every roster still get their last-known number
     for r in players:
         if not r["num"] and r["_last_num"]:
@@ -299,12 +382,13 @@ def main():
     OUT.write_text(json.dumps(players, separators=(",", ":"), ensure_ascii=False))
     size = OUT.stat().st_size / 1e6
     print(f"\nDone. {len(players)} players written to {OUT} ({size:.1f} MB).")
+    if missing_rosters:
+        print(f"{missing_rosters} team rosters never came back; those players use their last-known jersey number.")
     if skipped:
-        print(f"\nSkipped {len(skipped)} players because NBA.com sent unusable data:")
+        print(f"\nSkipped {len(skipped)} players because NBA.com still sent unusable data after a second try:")
         for pid, name in skipped:
             print(f"  {pid}  {name}")
-        print("Check them on nba.com/stats/player/<id>. To retry one, delete "
-              "cache/*_<id>.json and rerun.")
+        print("Nothing bad is cached, so just rerun later to try them again.")
 
 
 if __name__ == "__main__":
