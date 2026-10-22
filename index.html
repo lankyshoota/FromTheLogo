@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Barlow+Semi+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <style>
-/* Layout: a single binder page — header strip, seven card sleeves stacked, the open sleeve takes the guess; results sheet at the end. */
+/* Layout: a single binder page — header strip, eight card sleeves stacked, the open sleeve takes the guess; results sheet at the end. */
 :root{
   color-scheme: dark;
   --binder:#19141f;
@@ -102,11 +102,12 @@ details.how p{margin:.6em 0 0;color:var(--muted);max-width:60ch}
 .t-blank{background:repeating-linear-gradient(135deg,rgba(217,104,92,.18) 0 6px,transparent 6px 12px);border:1.5px solid rgba(217,104,92,.5);color:var(--miss);align-items:center;justify-content:center;text-align:center}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-.strip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.strip{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px}
 .strip .card{width:100%;padding:4px;border-radius:6px}
 .strip .card.empty{font-size:18px}
 .strip .card.cur{border-color:var(--gold);color:var(--gold);border-style:solid}
-.strip .card .pn{font-size:11px}
+.strip .card{container-type:inline-size}
+.strip .card .pn{font-size:min(11px, calc(235cqw / var(--len, 6)));white-space:nowrap;word-break:keep-all}   /* long last names shrink to fit instead of breaking */
 .strip .card .tier{font-size:7px}
 .strip .card .pct{font-size:8px}
 .strip .t-blank .pn{font-size:18px}
@@ -237,7 +238,7 @@ body[data-view="stats"] .g{display:none}
 
   <details class="how g">
     <summary>How to play</summary>
-    <p>Seven NBA prompts, same for everyone today. Name a player who fits each one. The fewer people who pick your guy, the rarer the card you pull and the more it's worth. LeBron fits a lot of prompts. He's also worth almost nothing.</p>
+    <p>Eight NBA prompts, same for everyone today. Name a player who fits each one. The fewer people who pick your guy, the rarer the card you pull and the more it's worth. LeBron fits a lot of prompts. He's also worth almost nothing.</p>
     <p>Every point moves your shooter one foot further from the rim. A 100-point pull sends him back 100 feet.</p>
     <p>One prompt at a time with a 20-second clock. Three tries per prompt; run out of time or tries and it's a brick. Each player can only be used once per pack. Franchise history counts: Sonics = Thunder, Bullets = Wizards, Vancouver = Grizzlies, New Jersey = Nets.</p>
     <div class="ladder">
@@ -283,6 +284,8 @@ async function loadPlayers(){
    describes it ("pair:LAL:MIA"), so PROMPTS[id] works for any id, including ones in
    packs stored before players.json changed. Unknown ids give undefined. */
 let GEN = null, RM = null;
+const PACK_SIZE = FTLPrompts.PACK_SIZE;   // prompts per pack (8)
+const MAX_PTS = PACK_SIZE * 100;          // a perfect pack: all 1 of 1s
 const PROMPTS = new Proxy({}, { get: (_, id) => (GEN && typeof id === 'string' && GEN.get(id)) || undefined });
 
 /* seeded randomness */
@@ -326,14 +329,14 @@ function buildPack(seed){
   return seed.startsWith('daily-') ? GEN.daily(seed.slice(6)) : GEN.random(rng(seed));
 }
 function freshState(mode, seed){
-  return { mode, seed, tv:2, date: localKey(), started:false, prompts: buildPack(seed), slots: Array.from({length:7}, () => ({ status:'open', strikes:0 })), active:0 };
+  return { mode, seed, tv:2, date: localKey(), started:false, prompts: buildPack(seed), slots: Array.from({length:PACK_SIZE}, () => ({ status:'open', strikes:0 })), active:0 };
 }
 /* saved packs are per user: fromthelogo:<user id>:<date> ("local" when offline with no user) */
 const storeKey = (date, uid = user?.id || 'local') => `fromthelogo:${uid}:${date}`;
 function load(date = localKey()){
   try {
     const s = JSON.parse(localStorage.getItem(storeKey(date)));
-    if (s && s.prompts && s.prompts.length === 7 && s.prompts.every(id => PROMPTS[id])) {
+    if (s && s.prompts && s.prompts.length === PACK_SIZE && s.prompts.every(id => PROMPTS[id])) {
       s.date ||= date;
       if (!s.tv) { s.slots.forEach(x => { if (x.tier) x.tier = OLD_TIERS[x.tier] || x.tier; }); s.tv = 2; }
       return s;
@@ -367,7 +370,7 @@ async function syncPack(st){
   try {
     const stored = await rpc('get_or_create_pack', { p_date: st.date, p_prompts: st.prompts.map(id => ({ id, text: PROMPTS[id].text })) });
     const ids = (stored || []).map(x => x.id);
-    st.online = ids.length === 7 && ids.every(id => PROMPTS[id] && odds(id).list.length);
+    st.online = ids.length === PACK_SIZE && ids.every(id => PROMPTS[id] && odds(id).list.length);
     if (st.online) st.prompts = ids;
   } catch(e){ st.online = false; console.warn('Supabase unreachable, using simulated pick rates.', e); }
 }
@@ -375,7 +378,7 @@ async function syncPack(st){
 /* real picks per prompt: 'date|idx' -> { total, counts: Map(player id -> picks) } */
 const REAL = {};
 function loadRates(date, rows){
-  for (let i = 0; i < 7; i++) REAL[date + '|' + i] = { total:0, counts:new Map() };
+  for (let i = 0; i < PACK_SIZE; i++) REAL[date + '|' + i] = { total:0, counts:new Map() };
   for (const r of rows || []) { const e = REAL[date + '|' + r.prompt_idx]; e.total += r.picks; e.counts.set(r.player_id, r.picks); }
 }
 /* a player's pick rate: Bayesian blend of real picks and the simulated estimate (worth K_PRIOR picks) */
@@ -783,8 +786,8 @@ async function showStats(){
       ${tile(n(st.packs), 'Packs played')}
       ${tile(n(st.current_streak), 'Current streak', st.current_streak === 1 ? 'day' : 'days')}
       ${tile(n(st.best_streak), 'Best streak', st.best_streak === 1 ? 'day' : 'days')}
-      ${tile(st.avg_score == null ? '–' : n(st.avg_score), 'Average score', 'out of 700')}
-      ${tile(st.best_score == null ? '–' : n(st.best_score), 'Best score', 'out of 700')}
+      ${tile(st.avg_score == null ? '–' : n(st.avg_score), 'Average score', `out of ${MAX_PTS}`)}
+      ${tile(st.best_score == null ? '–' : n(st.best_score), 'Best score', `out of ${MAX_PTS}`)}
       ${tile(st.best_ft == null ? '–' : n(st.best_ft) + ' ft', 'Best distance', st.best_ft == null ? '' : distLabel(st.best_ft))}
       ${tile(n(st.total_ft) + ' ft', 'Total feet shot', st.total_ft >= 94 ? (st.total_ft / 94).toFixed(1) + ' courts' : '')}
     </div>
@@ -796,7 +799,7 @@ async function showStats(){
       : '<span class="meta">No pulls yet. Rip today\'s pack.</span>'}
     <h3>Pack history</h3>
     ${st.history.length ? `<ul class="hist">${st.history.map(h => {
-      const row = Array.from({ length:7 }, (_, i) => { const c = h.cards.find(c => c.i === i); return c ? TIERS.find(t => t.id === c.tier).emoji : '❌'; }).join('');
+      const row = Array.from({ length:PACK_SIZE }, (_, i) => { const c = h.cards.find(c => c.i === i); return c ? TIERS.find(t => t.id === c.tier).emoji : '❌'; }).join('');
       return `<li><span class="d">${fmtDay(h.date)}</span><span class="sc">${h.score}</span><span class="row7" aria-label="${h.cards.length} cards pulled">${row}</span><span class="tag">${h.final ? 'final' : 'live'} · ${Math.max(2, h.score)} ft</span></li>`;
     }).join('')}</ul>` : '<span class="meta">No packs yet.</span>'}`;
 }
@@ -819,7 +822,7 @@ function miniCard(s, i, flip, cur){
   if (s.status === 'blank') return `<div class="card t-blank${flip?' flip':''}"><span class="pn">✕</span></div>`;
   const t = TIERS.find(x => x.id === s.tier);
   const parts = s.pick.split(' '); let ln = parts.at(-1); if (/^(Jr\.|II|III)$/.test(ln)) ln = parts.at(-2);
-  return `<div class="card ${t.cls}${flip?' flip':''}" title="${esc(s.pick)}"><span class="tier">${t.short}</span><span class="pn">${esc(ln)}</span><span class="pct">+${s.pts}</span></div>`;
+  return `<div class="card ${t.cls}${flip?' flip':''}" title="${esc(s.pick)}"><span class="tier">${t.short}</span><span class="pn" style="--len:${Math.max(5, ln.length)}">${esc(ln)}</span><span class="pct">+${s.pts}</span></div>`;
 }
 
 let lastPull = null, tick = null;
@@ -841,7 +844,7 @@ function render(flipIdx = -1){
   let panel = '';
   if (!done && !state.started) {
     panel = `<div class="panel">
-      <span class="num">7 prompts · 20 seconds each</span>
+      <span class="num">${PACK_SIZE} prompts · 20 seconds each</span>
       <span class="prompt big">${state.mode === 'daily' ? "Ready to rip today's pack?" : 'Ready to rip a pack?'}</span>
       <span class="meta">One prompt at a time. The clock starts as soon as each prompt shows up. Run out of time and it's a brick.</span>
       <button class="btn primary" id="startBtn">Start pack</button>
@@ -849,7 +852,7 @@ function render(flipIdx = -1){
   } else if (!done) {
     const i = state.active, s = state.slots[i], pid = state.prompts[i];
     panel = `${last}<div class="panel" id="panel">
-      <div class="ptop"><span class="num">Prompt ${i+1} of 7</span><span class="clock" id="clock">20</span></div>
+      <div class="ptop"><span class="num">Prompt ${i+1} of ${PACK_SIZE}</span><span class="clock" id="clock">20</span></div>
       <div class="bar"><i id="bar"></i></div>
       <span class="prompt big">${esc(PROMPTS[pid].text)}</span>
       <span class="meta">${odds(pid).list.length} players in the database fit</span>
@@ -1005,7 +1008,7 @@ function shareText(){
   const row = state.slots.map(s => s.status === 'blank' ? '❌' : TIERS.find(t=>t.id===s.tier).emoji).join('');
   const head = state.mode === 'daily' ? `FromTheLogo #${dayNum}` : 'FromTheLogo · unlimited';
   const d = distOf(total);
-  return `${head}\n${row}\n${total} / 700 · 🏀 ${Math.round(d)} ft (${distLabel(d)})`;
+  return `${head}\n${row}\n${total} / ${MAX_PTS} · 🏀 ${Math.round(d)} ft (${distLabel(d)})`;
 }
 let ratesFor = '';   // which daily pack's full pick rates have been fetched for the recap
 function renderResults(done){
@@ -1023,7 +1026,7 @@ function renderResults(done){
   const best = state.slots.filter(s=>s.status==='pulled').sort((a,b)=>a.pct-b.pct)[0];
   $('results').innerHTML = `<div class="results">
     <h2>Pack opened</h2>
-    <div class="big">${total}<small>/ 700 · shot from ${Math.round(distOf(total))} ft</small></div>
+    <div class="big">${total}<small>/ ${MAX_PTS} · shot from ${Math.round(distOf(total))} ft</small></div>
     ${status ? `<div class="meta">${status}</div>` : ''}
     ${best ? `<div class="meta">Best pull: <strong>${esc(best.pick)}</strong>, picked by ${fmtPct(best.pct)} of players.</div>` : ''}
     ${saveCard()}
@@ -1053,7 +1056,7 @@ function saveCard(){
 
 /* ---------- the shooter: every point of pull value pushes him further from the rim ---------- */
 const totalPts = () => state.slots.reduce((a,s) => a + (s.pts||0), 0);
-const distOf = pts => Math.max(2, pts);   // every point is a foot back: 0 = layup, 700 = 7+ courts
+const distOf = pts => Math.max(2, pts);   // every point is a foot back: 0 = layup, 800 = 8.5 courts
 function distLabel(d){
   if (d < 4) return 'Layup';
   if (d < 10) return 'Floater';

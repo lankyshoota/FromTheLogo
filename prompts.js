@@ -1,8 +1,11 @@
 /* FromTheLogo prompt generator.
  *
- * Builds every prompt the data supports, keeps the ones with enough valid answers
- * (including real deep cuts), sorts them into easy / medium / hard, and picks a
- * 7-prompt pack per day. Works in the browser (window.FTLPrompts) and in Node
+ * Prompts are easy to answer but hard to answer well: one simple condition (a team, a pair
+ * of teams, a team in a decade, a big college or country, a draft spot, rings, a long career,
+ * a big scoring season, a lot of playoff games), so anyone can name someone and the skill is
+ * going deep. No stacked filters like "Arkansas alum who played for the Bulls".
+ * Keeps the ones with enough valid answers (including a long tail of deep cuts), sorts them
+ * into easy / medium / hard, and picks an 8-prompt pack per day. Works in the browser (window.FTLPrompts) and in Node
  * (require('./prompts.js')) so it can be tested against players.json.
  *
  * Prompt ids describe the prompt ("pair:LAL:MIA", "ppg:SAC:20", "col:Duke"), so a pack
@@ -32,19 +35,21 @@
     ALLDEF: 'Made an All-Defensive team', ALLROOK: 'Made an All-Rookie team', POM: 'Won Player of the Month',
   };
 
-  // A prompt is used only if it has at least MIN_ANSWERS valid players, MIN_DEEP deep cuts
-  // and MIN_KNOWN names most fans would know (popularity 6+), so it's gettable.
+  // A prompt is used only if it has at least MIN_ANSWERS valid players, MIN_KNOWN names most
+  // fans would know (so a casual fan can always get one), and MIN_DEEP deep cuts (the long tail).
   // A deep cut is an answer the rarity model (rarity.js, default weights) expects under
   // DEEP_SHARE of picks: Refractor or 1 of 1 territory. Relative to the other answers, so a
   // 1970s 20-PPG King is a deep cut next to Webber and Fox even though he was a good player.
   // Well-known = top KNOWN_PCT of all players by recognition. Without rarity.js (old callers)
   // it falls back to the popularity field p.
-  const MIN_ANSWERS = 10, MIN_DEEP = 3, DEEP_SHARE = 0.02, MIN_KNOWN = 2, SIM_POWER = 3.4, KNOWN_PCT = 0.84;
-  const LEVELS = { easy: 20, medium: 8 };           // known answers: 20+ easy, 8-19 medium, 2-7 hard
-  const PACK = ['easy', 'easy', 'medium', 'medium', 'medium', 'hard', 'hard'];
+  const MIN_ANSWERS = 30, MIN_DEEP = 10, DEEP_SHARE = 0.02, MIN_KNOWN = 5, SIM_POWER = 3.4, KNOWN_PCT = 0.84;
+  const LEVELS = { easy: 25, medium: 12 };          // known answers: 25+ easy, 12-24 medium, 5-11 harder
+  // 8 per pack: mostly easy/medium, at most one harder one (a medium if no harder one fits)
+  const PACK = ['easy', 'easy', 'easy', 'medium', 'medium', 'medium', 'medium', 'hard'];
   const CYCLE = 28;                                   // days before a prompt can come back
   const AWARDS_READY = 0.99;                          // share of players whose awards are checked
   const DAY_EPOCH = Date.UTC(2026, 0, 1);
+  const LAUNCH = '2026-10-22';                       // first daily pack; history for no-repeats starts here
 
   // Champions by season start year (1970 = 1970-71), as current franchises. Later seasons
   // are worked out from the data (see prepare), so this never needs updating.
@@ -129,6 +134,12 @@
    * make(args) returns null for ids that don't make sense. */
 
   const KINDS = {
+    team:   { family: 'team',   make: ([t]) => TEAM[t] && {
+                teams: [t], text: `Played for the ${TEAM[t]}`, test: p => p._x.teams.has(t) } },
+    r2:     { family: 'draft',  make: () => ({
+                text: 'Second-round pick', test: p => p._x.round2 }) },
+    und:    { family: 'draft',  make: () => ({
+                text: 'Went undrafted', test: p => p._x.undrafted }) },
     pair:   { family: 'pair',   make: ([a, b]) => TEAM[a] && TEAM[b] && a < b && {
                 teams: [a, b], text: `Played for the ${TEAM[a]} and ${TEAM[b]}`,
                 test: p => p._x.teams.has(a) && p._x.teams.has(b) } },
@@ -154,7 +165,7 @@
                 teams: [t], text: `${c.join(':')} alum who played for the ${TEAM[t]}`,
                 test: p => p.col === c.join(':') && p._x.teams.has(t) } },
     pick:   { family: 'draft',  make: ([n]) => +n >= 1 && +n <= 60 && {
-                text: `No. ${n} overall pick`, test: p => !!p.dr && p.dr[1] === 1 && p.dr[2] === +n } },
+                text: +n === 1 ? 'No. 1 overall pick' : `No. ${n} overall pick`, test: p => !!p.dr && p.dr[1] === 1 && p.dr[2] === +n } },
     class:  { family: 'draft',  make: ([y]) => /^\d{4}$/.test(y) && {
                 text: `Drafted in ${y}`, test: p => !!p.dr && p.dr[0] === +y } },
     r2long: { family: 'draft',  make: ([n]) => ({
@@ -166,7 +177,7 @@
     ctry:   { family: 'ctry',   make: c => c.length && {
                 text: `From ${c.join(':')}`, test: p => p.c === c.join(':') } },
     rings:  { family: 'ring',   make: ([n]) => ({
-                text: `Won ${n}+ titles`, test: p => p._x.rings >= +n }) },
+                text: +n === 1 ? 'Won a title' : `Won ${n}+ titles`, test: p => p._x.rings >= +n }) },
     ringund:{ family: 'ring',   make: () => ({
                 text: 'Won a title, went undrafted', test: p => p._x.rings > 0 && p._x.undrafted }) },
     ringr2: { family: 'ring',   make: () => ({
@@ -225,6 +236,9 @@
   }
 
   /* every id worth trying for this data */
+  /* every id worth trying for this data: one simple condition each (or a team pair / team + decade).
+     Kinds not listed here (college + team, 7-footer + team, ...) are too specific and are no longer
+     generated; they stay in KINDS only so packs saved with them still load. */
   function candidateIds(players, info) {
     const teams = Object.keys(TEAM), ids = [];
     for (let i = 0; i < teams.length; i++) for (let j = i + 1; j < teams.length; j++) ids.push(`pair:${teams[i]}:${teams[j]}`);
@@ -232,41 +246,27 @@
     const countries = [...new Set(players.map(p => p.c).filter(c => c && c !== 'USA'))];
     const years = [...new Set(players.filter(p => p.dr).map(p => p.dr[0]))].filter(y => y >= 1966);
     for (const t of teams) {
-      for (const n of [20, 25]) ids.push(`ppg:${t}:${n}`);
-      for (const n of [10, 12]) ids.push(`rpg:${t}:${n}`);
-      for (const n of [7, 9]) ids.push(`apg:${t}:${n}`);
-      ids.push(`tgp:${t}:500`);
+      ids.push(`team:${t}`);
       for (const d of decades) ids.push(`dec:${t}:${d}`);
-      ids.push(`tring:${t}`, `tund:${t}`, `tr2:${t}`, `tintl:${t}`, `ttall:${t}:84`);
-      for (const c of info.colleges) ids.push(`tcol:${t}:${c}`);
-      for (const k of Object.keys(AWARDS)) ids.push(`awt:${k}:${t}`);
     }
-    for (let n = 1; n <= 10; n++) ids.push(`pick:${n}`);
+    ids.push('pick:1', 'r2', 'und');
     for (const y of years) ids.push(`class:${y}`);
-    for (const n of [8, 10, 12]) ids.push(`r2long:${n}`, `undlong:${n}`);
     for (const c of info.colleges) ids.push(`col:${c}`);
     for (const c of countries) ids.push(`ctry:${c}`);
-    for (const n of [2, 3, 4, 5]) ids.push(`rings:${n}`);
-    ids.push('ringund', 'ringr2', 'ringintl');
-    for (const n of [15, 17, 19]) ids.push(`seasons:${n}`);
-    for (const n of [7, 9, 11]) ids.push(`teams:${n}`);
-    for (const n of [10, 13, 15]) ids.push(`oneteam:${n}`);
-    for (const n of [1000, 1200, 1400]) ids.push(`gp:${n}`);
-    for (const n of [100, 150, 200]) ids.push(`po:${n}`);
-    for (const n of [400, 600]) ids.push(`nopo:${n}`);
+    for (const n of [1, 2, 3]) ids.push(`rings:${n}`);
+    for (const n of [12, 15]) ids.push(`seasons:${n}`);
+    for (const n of [7, 9]) ids.push(`teams:${n}`);
+    for (const n of [1000]) ids.push(`gp:${n}`);
+    for (const n of [50, 100]) ids.push(`po:${n}`);
     for (const n of [20, 25]) ids.push(`cppg:${n}`);
-    for (const n of [28, 30, 32]) ids.push(`sppg:${n}`);
-    for (const n of [13, 15]) ids.push(`srpg:${n}`);
-    for (const n of [10, 11]) ids.push(`sapg:${n}`);
-    for (const n of [15000, 20000, 25000]) ids.push(`pts:${n}`);
-    for (const n of [85, 86]) ids.push(`tall:${n}`);
-    for (const n of [70, 72]) ids.push(`short:${n}`);
-    for (const k of Object.keys(AWARDS)) ids.push(`aw:${k}`, `awund:${k}`, `awr2:${k}`, `awintl:${k}`);
-    for (const n of [12, 15]) ids.push(`noas:${n}`);
+    for (const n of [20, 25, 30]) ids.push(`sppg:${n}`);
+    for (const n of [15000, 20000]) ids.push(`pts:${n}`);
+    for (const k of Object.keys(AWARDS)) ids.push(`aw:${k}`);   // only once awards are checked
     return ids;
   }
 
   function level(known) { return known >= LEVELS.easy ? 'easy' : known >= LEVELS.medium ? 'medium' : 'hard'; }
+  const PACK_SIZE = PACK.length;
 
   /* ------------------------------------------------------------ the generator */
 
@@ -287,8 +287,9 @@
         pr.answers = ans.length;
         if (opts.rarity) {
           const share = opts.rarity.quick(ans);
-          pr.deep = ans.filter(p => share.get(p.id) < DEEP_SHARE).length;
           pr.known = ans.filter(p => p._rp0 >= KNOWN_PCT).length;
+          // a deep cut is someone most fans don't know AND few would pick
+          pr.deep = ans.filter(p => p._rp0 < KNOWN_PCT && share.get(p.id) < DEEP_SHARE).length;
         } else {
           const total = ans.reduce((a, p) => a + Math.pow(p.p, SIM_POWER), 0);
           pr.deep = ans.filter(p => Math.pow(p.p, SIM_POWER) / total < DEEP_SHARE).length;
@@ -309,17 +310,20 @@
     const buckets = { easy: [], medium: [], hard: [] };
     for (const pr of usable) buckets[pr.level].push(pr);
 
-    /* pick 7 for a pack: for each difficulty, walk the candidate lists in order, skipping any
+    /* pick PACK_SIZE for a pack: for each difficulty, walk the candidate lists in order, skipping any
        that would repeat a family (2 team-pair prompts allowed) or mention a team already used */
-    const NEXT = { easy: ['easy', 'medium', 'hard'], medium: ['medium', 'easy', 'hard'], hard: ['hard', 'medium', 'easy'] };
-    function pick(lists) {   // lists: array of { easy:[], medium:[], hard:[] }, tried in order
+    // never more than one harder prompt: easy and medium slots only fall back to each other
+    const NEXT = { easy: ['easy', 'medium'], medium: ['medium', 'easy'], hard: ['hard', 'medium', 'easy'] };
+    // lists: [{ easy, medium, hard }, ...] tried in order; a list marked loose ignores the
+    // one-per-family rule (but never repeats a team)
+    function pick(lists) {
       const chosen = [], families = {}, teams = new Set();
-      const fits = pr => !chosen.includes(pr) && (families[pr.family] || 0) < (pr.family === 'pair' ? 2 : 1)
-        && !pr.teams.some(t => teams.has(t));
+      const fits = loose => pr => !chosen.includes(pr) && !pr.teams.some(t => teams.has(t))
+        && (loose || (families[pr.family] || 0) < (pr.family === 'pair' ? 2 : 1));
       for (const lv of PACK) {
         let pr;
         for (const l of lists) {
-          for (const want of NEXT[lv]) if ((pr = l[want].find(fits))) break;
+          for (const want of NEXT[lv]) if ((pr = l[want].find(fits(l.loose)))) break;
           if (pr) break;
         }
         if (!pr) continue;
@@ -327,7 +331,7 @@
         families[pr.family] = (families[pr.family] || 0) + 1;
         pr.teams.forEach(t => teams.add(t));
       }
-      // last resort (only with tiny data sets): fill to 7 without the variety rules
+      // last resort (only with tiny data sets): fill the pack without the variety rules
       for (const l of lists) for (const lv of ['easy', 'medium', 'hard']) for (const pr of l[lv]) {
         if (chosen.length < PACK.length && !chosen.includes(pr)) chosen.push(pr);
       }
@@ -345,16 +349,30 @@
     const split = (prs, key) => ({ easy: ordered(prs.filter(p => p.level === 'easy'), key),
       medium: ordered(prs.filter(p => p.level === 'medium'), key), hard: ordered(prs.filter(p => p.level === 'hard'), key) });
 
-    /* the daily pack: only prompts in today's slot of the cycle, so nothing repeats within
-       CYCLE days. Only if today's slot can't fill 7 does it borrow from the slot half a cycle
-       away, then anything (logged by the tests as "borrowed"). */
+    /* the daily pack: every pack from LAUNCH up to this date is built in order, each one
+       skipping anything used in the CYCLE - 1 days before it, so nothing repeats within CYCLE
+       days. Same data -> same packs for everyone. Only if that leaves too little does it fall
+       back to prompts used recently (never happens with the real data). Packs are memoized. */
+    const packs = new Map();
     function daily(dateKey) {
-      const slot = ((dayIndex(dateKey) % CYCLE) + CYCLE) % CYCLE, far = (slot + CYCLE / 2) % CYCLE;
-      const key = pr => h32(dateKey + '|' + pr.id);
-      return pick([split(usable.filter(p => p.slot === slot), key),
-                   split(usable.filter(p => p.slot === far), key),
-                   split(usable, key)]);
+      if (packs.has(dateKey)) return packs.get(dateKey);
+      const day = dayIndex(dateKey), start = Math.min(day, dayIndex(LAUNCH));
+      let k = start;
+      while (k < day && packs.has(dateFromIndex(k + 1))) k++;   // continue from the last built day
+      for (; k <= day; k++) {
+        const key = dateFromIndex(k);
+        if (packs.has(key)) continue;
+        const recent = new Set();
+        for (let j = Math.max(start, k - CYCLE + 1); j < k; j++) (packs.get(dateFromIndex(j)) || []).forEach(id => recent.add(id));
+        const order = pr => h32(key + '|' + pr.id);
+        const fresh = split(usable.filter(p => !recent.has(p.id)), order);
+        // fresh prompts first; then fresh ones even if a family repeats (a 3rd team pair beats a
+        // repeat); only then anything at all
+        packs.set(key, pick([fresh, Object.assign({}, fresh, { loose: true }), split(usable, order)]));
+      }
+      return packs.get(dateKey);
     }
+    function dateFromIndex(k) { return new Date(DAY_EPOCH + k * 864e5).toISOString().slice(0, 10); }
 
     /* unlimited mode: any usable prompt, random order */
     function random(rnd = Math.random) {
@@ -365,7 +383,7 @@
     return { get, daily, random, buckets, usable, info, TEAM };
   }
 
-  const api = { create, parse, TEAM, AWARDS, CYCLE, MIN_ANSWERS, MIN_DEEP, MIN_KNOWN };
+  const api = { create, parse, TEAM, AWARDS, CYCLE, MIN_ANSWERS, MIN_DEEP, MIN_KNOWN, PACK_SIZE: PACK.length };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.FTLPrompts = api;
 })(typeof window !== 'undefined' ? window : globalThis);

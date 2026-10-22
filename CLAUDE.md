@@ -43,19 +43,25 @@ steps and check in before big changes.
   well-known role players must be Copper/Silver when among the 3 most recognizable answers and
   never Refractor/1 of 1; the 3 least recognizable answers must be Refractor/1 of 1. Only warns
   until players.json has Wikipedia views. Prints 3 example prompts.
-- `prompts.js` — prompt generator, loaded by index.html (also runs in Node for tests). Builds
-  every prompt the data supports (team pairs, team + decade, team stat seasons, titles with a
-  team, undrafted/2nd-round/international/7-footer + team, college (+ team), country, draft pick
-  and class, rings, career length, games, playoff games, career/season stats; award prompts too,
-  but only once ~all players have "ad"). Keeps a prompt if it has 10+ answers, 3+ deep cuts
-  (answers rarity.js's quick estimate puts under 2%) and 2+ well-known answers (top 16% by
-  recognition under the default model, so packs don't shift with the daily model).
-  Difficulty by well-known answers: 20+ easy, 8-19 medium, 2-7 hard. Daily pack = 2 easy,
-  3 medium, 2 hard, easy to hard; max one prompt per family (two team pairs allowed), no team
-  twice. Prompt ids describe the prompt ("pair:LAL:MIA", "ppg:SAC:20", "col:Duke") so stored
-  packs can always be rebuilt. Each prompt is hashed to one day of a 28-day cycle, so no repeats
-  within 28 days (rarely 14 when a day borrows). Champions 1970-2024 are a fixed list; later
-  seasons come from the data. Unlimited mode picks randomly with the same rules.
+- `prompts.js` — prompt generator, loaded by index.html (also runs in Node for tests).
+  Rule (Lanky): easy to answer, hard to answer well. Anyone should be able to name someone;
+  the skill is going deep. So no stacked filters (college + team, country + team, 7-footer +
+  team, undrafted/2nd-round + team, team stat seasons...). Generated kinds: single team, team
+  pairs, team + decade, big colleges, big countries, No. 1 picks, second-rounders, undrafted,
+  draft classes, rings (1+/2+/3+), career length, 7+/9+ teams, 1,000+ games, playoff games,
+  career/season scoring, career points; awards (aw:X only) once ~all players have "ad". Older
+  kinds stay parseable so saved packs load, but aren't generated.
+  Keeps a prompt only with 30+ answers, 5+ widely known answers (top 16% by recognition under
+  the default model) and 10+ deep cuts (not widely known AND under 2% in rarity.js's quick
+  estimate). Difficulty by widely known answers: 25+ easy, 12-24 medium, 5-11 harder.
+  Daily pack = 8: 3 easy, 4 medium, at most 1 harder (easy/medium never fall back to harder);
+  one prompt per family (two team pairs), no team twice. Packs are built in order from LAUNCH
+  (2026-10-22), each skipping everything used in the previous 27 days, so no repeats within 28
+  days; if fresh prompts run out it first allows a family to repeat, only then a recent prompt
+  (never happens with the real data). Same data -> same packs for everyone. Prompt ids describe
+  the prompt ("pair:LAL:MIA", "col:Duke") so stored packs can always be rebuilt. Champions
+  1970-2024 are a fixed list; later seasons come from the data. Unlimited mode picks randomly
+  with the same rules.
 - `check_players.py` — sanity checks for players.json (team codes, impossible games, rings vs
   champions, misattributed old game-log rows) and, with ./cache, who's missing vs the old list.
 - `players.sample.json` — 324-player fallback (fake negative ids). Delete once players.json
@@ -136,7 +142,9 @@ steps and check in before big changes.
   retried on the next visit while the date is open.
 
 ## Game rules (decided — don't change without asking)
-- **7 prompts per day**, same for everyone. Plus "Rip a new pack" unlimited mode.
+- **8 prompts per day** (was 7; changed by Lanky), same for everyone. Plus "Rip a new pack"
+  unlimited mode. index.html uses PACK_SIZE from prompts.js; schema.sql allows prompt_idx 0-7,
+  totals up to 800 and 8-prompt packs.
 - **One prompt at a time, 20-second clock** per prompt. Clock starts when the prompt appears.
   "Start pack" button so it doesn't start on page load. Deadline is saved so refreshing
   doesn't reset the clock.
@@ -165,7 +173,7 @@ Old saved packs (before the rename) used base/ins/refr/num/gold/one; index.html 
 
 - Ranges are a first guess — tune them once real pick data exists. Points stay as is.
 - **1 point = 1 foot.** The shooter's distance from the rim = total points (min 2 ft layup).
-  700 max = ~7 courts back. Court markings repeat every 94 ft.
+  800 max = ~8.5 courts back. Court markings repeat every 94 ft.
 - Share card: emoji row per tier + score + distance.
 
 ## Look

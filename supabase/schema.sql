@@ -9,12 +9,13 @@
 -- Everyone who plays is a Supabase Auth user: guests are anonymous users, and
 -- signing up later turns that same user into a real account.
 --
--- Keep in sync with index.html / rarity.js: the tier ids, cutoffs and points in pick_scores(),
+-- Keep in sync with index.html / rarity.js / prompts.js: 8 prompts per pack (max 800),
+-- the tier ids, cutoffs and points in pick_scores(),
 -- the Bayesian prior K = 100, and the fame model bounds in propose_fame_model().
 
 -- ---------------------------------------------------------------- tables
 
--- One row per day: the 7 prompts everyone gets. Created automatically by the
+-- One row per day: the 8 prompts everyone gets. Created automatically by the
 -- first player of the day (see get_or_create_pack), so there's nothing to run daily.
 create table if not exists daily_packs (
   pack_date  date primary key,
@@ -34,7 +35,7 @@ create unique index if not exists profiles_username_lower on profiles (lower(use
 create table if not exists picks (
   id          bigint generated always as identity primary key,
   pack_date   date not null references daily_packs (pack_date) on delete cascade,
-  prompt_idx  smallint not null check (prompt_idx between 0 and 6),
+  prompt_idx  smallint not null check (prompt_idx between 0 and 7),
   player_id   bigint not null,          -- NBA.com player id from players.json
   user_id     uuid references auth.users (id) on delete set null,   -- picks outlive deleted users so rates don't change
   sim_pct     real not null default 0 check (sim_pct between 0 and 100),  -- simulated rate, for the cold-start blend
@@ -59,10 +60,17 @@ end $$;
 create table if not exists submissions (
   pack_date   date not null references daily_packs (pack_date) on delete cascade,
   user_id     uuid not null references auth.users (id) on delete cascade,
-  total       smallint not null check (total between 0 and 700),
+  total       smallint not null check (total between 0 and 800),
   created_at  timestamptz not null default now(),
   primary key (pack_date, user_id)
 );
+
+-- 8 prompts per pack (it was 7): prompt positions 0-7, scores up to 800. Re-adding the checks
+-- updates tables created by an earlier version of this file.
+alter table picks drop constraint if exists picks_prompt_idx_check;
+alter table picks add constraint picks_prompt_idx_check check (prompt_idx between 0 and 7);
+alter table submissions drop constraint if exists submissions_total_check;
+alter table submissions add constraint submissions_total_check check (total between 0 and 800);
 
 -- A guest about to log in to an existing account gets a one-time token, so the
 -- account can claim the guest's history afterwards.
@@ -156,7 +164,7 @@ $$;
 
 -- ---------------------------------------------------------------- game
 
--- Returns the day's 7 prompts. The first caller of the day proposes the pack
+-- Returns the day's 8 prompts. The first caller of the day proposes the pack
 -- (every browser builds the same one from the date); later callers get that one.
 create or replace function get_or_create_pack(p_date date, p_prompts jsonb)
 returns jsonb
@@ -173,11 +181,11 @@ begin
   if not pack_date_open(p_date) then
     raise exception 'pack date % is not open', p_date;
   end if;
-  if jsonb_typeof(p_prompts) <> 'array' or jsonb_array_length(p_prompts) <> 7
+  if jsonb_typeof(p_prompts) <> 'array' or jsonb_array_length(p_prompts) <> 8
      or exists (select 1 from jsonb_array_elements(p_prompts) e
                 where coalesce(jsonb_typeof(e -> 'id'), '') <> 'string' or length(e ->> 'id') > 64
                    or length(coalesce(e ->> 'text', '')) > 200) then
-    raise exception 'a pack is 7 prompts with an id and text';
+    raise exception 'a pack is 8 prompts with an id and text';
   end if;
   insert into daily_packs (pack_date, prompts) values (p_date, p_prompts)
   on conflict (pack_date) do nothing;
@@ -235,7 +243,7 @@ begin
     raise exception 'pack date % is closed', p_date;
   end if;
   insert into submissions (pack_date, user_id, total)
-  values (p_date, me, greatest(0, least(700, p_total)))
+  values (p_date, me, greatest(0, least(800, p_total)))
   on conflict (pack_date, user_id) do nothing;
 end;
 $$;
