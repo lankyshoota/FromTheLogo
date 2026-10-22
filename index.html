@@ -155,7 +155,45 @@ details.how p{margin:.6em 0 0;color:var(--muted);max-width:60ch}
 .recap{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
 .recap li{border-top:1px solid var(--line);padding-top:10px;font-size:15px;color:var(--muted)}
 .recap li b{color:var(--text);display:block;font-weight:600}
+.recap li strong{color:var(--text);font-weight:600}
+.rh{font:900 22px var(--display);text-transform:uppercase;letter-spacing:.02em;margin:14px 0 0}
+.recap .mine{color:var(--text);margin:4px 0 6px}
+.recap dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:0;font-size:14px}
+.recap dt{font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding-top:3px}
+.recap dd{margin:0;color:var(--text)}
+.recap dd i{font-style:normal;font:500 12px var(--mono);color:var(--muted)}
+.swatch.brick{background:repeating-linear-gradient(45deg,#3a2f42 0 3px,#2a2232 3px 6px);border:1px solid var(--line)}
+.standing{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.standing div{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--sleeve)}
+.standing b{font:900 34px/1 var(--display);color:var(--gold);display:block;font-variant-numeric:tabular-nums}
+.standing small{font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.curve{margin:0;border:1px solid var(--line);border-radius:12px;padding:10px 12px 8px;background:var(--sleeve)}
+.curve figcaption{font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.curve svg{width:100%;height:auto;display:block;overflow:visible}
+.curve .bars rect{fill:rgba(239,232,220,.12)}
+.curve .line{fill:none;stroke:var(--gold);stroke-width:2;stroke-linejoin:round}
+.curve .axis{stroke:var(--line)}
+.curve .tick{font:500 9px var(--mono);fill:var(--muted)}
+.curve .cut{stroke:rgba(239,232,220,.35);stroke-dasharray:2 3}
+.curve .cutl{font:600 9px var(--mono);fill:var(--muted)}
+.curve line.me{stroke:var(--gold);stroke-width:2}
+.curve circle.me{fill:var(--gold)}
+.curve .mel{font:700 11px var(--mono);fill:var(--gold)}
+.results .fine{font-size:13px;color:var(--muted);margin:0}
+.curve .fine{margin:6px 0 0}
 .actions{display:flex;gap:8px;flex-wrap:wrap}
+.hd-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.help{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);font:700 18px var(--body);cursor:pointer;line-height:1}
+.help:hover{border-color:var(--gold);color:var(--gold)}
+.howto ul{margin:0 0 14px;padding-left:18px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+.howto li strong{color:var(--text);font-weight:600}
+.tiers{width:100%;border-collapse:collapse;font-size:15px;margin-bottom:12px}
+.tiers th{font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 0 6px}
+.tiers td{padding:6px 0;border-top:1px solid var(--line)}
+.tiers td:nth-child(2),.tiers td:nth-child(3),.tiers th:nth-child(2),.tiers th:nth-child(3){text-align:right}
+.swatch{display:inline-block;width:14px;height:19px;border-radius:3px;vertical-align:middle;margin-right:8px;position:relative;overflow:hidden}
+.tag{font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);border-radius:4px;padding:1px 5px;margin-left:6px;color:var(--muted)}
+.tag.live{color:var(--gold);border-color:rgba(232,184,74,.45)}
 .next{font:600 13px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
 .foot{font:500 12px var(--mono);color:var(--muted);letter-spacing:.04em;text-align:center}
 /* accounts */
@@ -219,7 +257,10 @@ body[data-view="stats"] .g{display:none}
       <div class="sub" id="sub">Pack #1</div>
       <button class="chip" id="acctBtn" type="button" hidden></button>
     </div>
-    <div class="score"><b id="total">0</b><small>pull value</small></div>
+    <div class="hd-right">
+      <button class="help" id="helpBtn" type="button" aria-label="How to play">?</button>
+      <div class="score"><b id="total">0</b><small>pull value</small></div>
+    </div>
   </header>
 
   <div class="stage g" id="stage" title="Tap to shoot">
@@ -237,15 +278,6 @@ body[data-view="stats"] .g{display:none}
     <button id="tabStats" aria-pressed="false">Stats</button>
   </div>
 
-  <details class="how g">
-    <summary>How to play</summary>
-    <p>One pack a day: eight NBA prompts, same for everyone. Name a player who fits each one. The fewer people who pick your guy, the rarer the card you pull and the more it's worth. LeBron fits a lot of prompts. He's also worth almost nothing.</p>
-    <p>Every point moves your shooter one foot further from the rim. A 100-point pull sends him back 100 feet.</p>
-    <p>One prompt at a time with a 20-second clock. Three tries per prompt; run out of time or tries and it's a brick. Each player can only be used once per pack. Franchise history counts: Sonics = Thunder, Bullets = Wizards, Vancouver = Grizzlies, New Jersey = Nets.</p>
-    <div class="ladder">
-      <span class="t-copper">Copper · 25%+ · 10</span><span class="t-silver">Silver · 10–25% · 25</span><span class="t-gold" style="position:relative;overflow:hidden"><span style="position:relative">Gold · 5–10% · 40</span></span><span class="t-emerald" style="position:relative;overflow:hidden"><span style="position:relative">Emerald · 2–5% · 60</span></span><span class="t-refr" style="position:relative"><span style="position:relative">Refractor · 0.5–2% · 80</span></span><span class="t-one" style="position:relative;overflow:hidden"><span style="position:relative">1 of 1 · under 0.5% · 100</span></span>
-    </div>
-  </details>
 
   <p class="foot" id="foot">Loading players…</p>
 </div>
@@ -320,7 +352,9 @@ const TIERS = [
 const OLD_TIERS = { base:'copper', ins:'silver', refr:'gold', num:'emerald', gold:'refr', one:'one' };
 const tierOf = pct => TIERS.find(t => pct >= t.min);
 const pointsOf = pct => tierOf(pct).pts;
-const fmtPct = p => p < 1 ? p.toFixed(1) + '%' : Math.round(p) + '%';
+const fmtPct = p => p < 0.1 ? '<0.1%' : p < 10 ? p.toFixed(1) + '%' : Math.round(p) + '%';
+/* how sure a pick % is: live (real picks so far), final (day settled), or estimated (no server data) */
+const rateTag = st => st.mode !== 'daily' || !st.online ? 'est.' : st.settled ? 'final' : 'live';
 function serial(){ return ''; }   // tier names say it all now ("1 of 1")
 
 /* dates */
@@ -369,14 +403,33 @@ const withTimeout = (promise, ms) => Promise.race([promise, new Promise((_, no) 
 const closesAt = date => { const [y,m,d] = date.split('-').map(Number); return Date.UTC(y, m-1, d+2); };
 
 /* everyone gets the pack stored in Supabase; the first player of the day stores the one their browser built */
+/* why the game is offline, shown in the footer and the Offline panel */
+let offlineWhy = '';
+const errText = e => [e?.message || e?.error_description || (typeof e === 'string' ? e : ''), e?.code, e?.status].filter(Boolean).join(' / ') || JSON.stringify(e);
+const why = msg => { offlineWhy = offlineWhy || msg; console.warn('FromTheLogo offline:', msg); };
+/* everyone gets the pack stored in Supabase. A pack already started offline can still go online
+   if the stored pack is the same one (it normally is: every browser builds the same pack); its
+   picks so far are queued and sent. */
 async function syncPack(st){
-  if (!user) { st.online = false; return; }
+  if (!user) { st.online = false; why(offlineWhy || 'not signed in'); return; }
   try {
     const stored = await rpc('get_or_create_pack', { p_date: st.date, p_prompts: st.prompts.map(id => ({ id, text: PROMPTS[id].text })) });
     const ids = (stored || []).map(x => x.id);
-    st.online = ids.length === PACK_SIZE && ids.every(id => PROMPTS[id] && odds(id).list.length);
-    if (st.online) st.prompts = ids;
-  } catch(e){ st.online = false; console.warn('Supabase unreachable, using simulated pick rates.', e); }
+    const usable = ids.length === PACK_SIZE && ids.every(id => PROMPTS[id] && odds(id).list.length);
+    if (!usable) { st.online = false; why(`today's stored pack doesn't fit this version of the game (${ids.length} prompts: ${ids.slice(0, 3).join(', ')}…)`); return; }
+    if (st.started && ids.join() !== st.prompts.join()) {
+      st.online = false; why("you started a different pack than today's stored one; tomorrow's will be online"); return;
+    }
+    st.prompts = ids;
+    if (!st.online && st.started) {   // catch up picks made while offline
+      st.unsent ||= [];
+      st.slots.forEach((s, i) => { if (s.status === 'pulled' && !s.sent && !st.unsent.some(u => u[0] === i)) st.unsent.push([i, s.id]); });
+    }
+    st.online = true; offlineWhy = '';
+  } catch(e){
+    st.online = false;
+    why(`couldn't get today's pack: ${errText(e)}`);
+  }
 }
 
 /* real picks per prompt: 'date|idx' -> { total, counts: Map(player id -> picks) } */
@@ -401,6 +454,7 @@ const pickArgs = (st, idx, playerId) =>
 async function sendPick(st, idx, playerId){
   try {
     const [r] = await rpc('submit_pick', pickArgs(st, idx, playerId), 3500);
+    st.slots[idx].sent = true;
     const e = REAL[st.date + '|' + idx] ||= { total:0, counts:new Map() };
     e.total = r.prompt_picks; e.counts.set(playerId, r.player_picks);
     return true;
@@ -411,18 +465,19 @@ async function flushUnsent(st){
   if (!st.unsent?.length) return;
   if (Date.now() >= closesAt(st.date)) { st.unsent = []; save(st); return; }
   for (const [idx, id] of [...st.unsent]) {
-    try { await rpc('submit_pick', pickArgs(st, idx, id)); }
+    try { await rpc('submit_pick', pickArgs(st, idx, id)); if (st.slots[idx]) st.slots[idx].sent = true; }
     catch(e){ break; }
     st.unsent = st.unsent.filter(u => u[0] !== idx); save(st);
   }
 }
 async function sendScore(st){
-  if (st.mode !== 'daily' || !st.online || st.scoreSent || st.slots.some(s => s.status === 'open')) return;
+  if (st.mode !== 'daily' || !st.online || st.scoreSent || st.slots.some(s => s.status === 'open')) return st.scoreSent;
   if (Date.now() >= closesAt(st.date)) return;
   try {
     await rpc('submit_score', { p_date:st.date, p_total:st.slots.reduce((a,s) => a + (s.pts||0), 0) });
     st.scoreSent = true; save(st);
   } catch(e){}
+  return st.scoreSent;
 }
 /* once a date closes, re-score its pack with the final pick rates */
 async function settle(st){
@@ -532,13 +587,13 @@ function loadSupabase(){
 }
 async function initAuth(){
   await loadSupabase();
-  if (!window.supabase?.createClient) return;
+  if (!window.supabase?.createClient) { why("couldn't load the Supabase library from cdn.jsdelivr.net (blocked or slow network)"); return; }
   try {
     sb = supabase.createClient(SB_URL, SB_KEY, { auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:true } });
     const { data } = await withTimeout(sb.auth.getSession(), 6000);
     user = data.session?.user || null;
     sb.auth.onAuthStateChange((ev, session) => { user = session?.user || null; });
-  } catch(e){ console.warn('Supabase Auth unreachable, playing offline.', e); user = null; }
+  } catch(e){ why(`Supabase Auth unreachable: ${errText(e)}`); user = null; }
   if (urlErr || /access_token|error=/.test(location.hash + location.search)) history.replaceState(null, '', here());
 }
 
@@ -616,7 +671,11 @@ function sheetWelcome(){
     $('wGuest').onclick = async () => {
       busy($('sheetBody'), true);
       const { data, error } = await sb.auth.signInAnonymously().catch(e => ({ error:e }));
-      if (error) { console.warn(error); user = null; note("Couldn't start a guest session. Playing offline on simulated pick rates.", true); }
+      if (error) {
+        user = null;
+        why(/anonymous/i.test(error.message || '') ? 'guest sign-in is turned off in Supabase (Authentication > Sign In / Providers > Allow anonymous sign-ins)' : `guest sign-in failed: ${errText(error)}`);
+        note("Couldn't start a guest session. Playing offline on simulated pick rates.", true);
+      }
       else user = data.user;
       closeSheet(); resolve();
     };
@@ -736,7 +795,8 @@ function sheetSetPassword(){
 }
 function sheetAccount(){
   if (!user) {
-    openSheet(`<h2>Offline</h2><p>Couldn't reach the server, so you're playing on simulated pick rates and nothing is saved online.</p>
+    openSheet(`<h2>Offline</h2><p>You're playing on simulated pick rates and nothing is saved online.</p>
+      ${offlineWhy ? `<p><strong>Why:</strong> ${esc(offlineWhy)}</p>` : ''}
       <div class="stack"><button class="btn primary wide" id="xRetry">Try again</button><button class="link" id="xClose">Close</button></div>`);
     $('xRetry').onclick = () => location.reload();
   } else if (isGuest()) {
@@ -752,6 +812,24 @@ function sheetAccount(){
   }
   $('xClose').onclick = closeSheet;
 }
+/* the ? panel: how to play, plain */
+function sheetHelp(){
+  openSheet(`<div class="howto"><h2>How to play</h2>
+    <ul>
+      <li><strong>One pack a day.</strong> ${PACK_SIZE} prompts, the same for everyone.</li>
+      <li><strong>20 seconds per prompt.</strong> Name any NBA player (1970-71 on) who fits.</li>
+      <li><strong>3 tries.</strong> A player who doesn't fit costs a try. Out of tries or time is a brick (0 points). Each player once per pack.</li>
+      <li><strong>Rarer answers score more.</strong> The fewer people who pick your player, the better the card, and every point pushes your shooter a foot further from the hoop.</li>
+      <li>Franchise history counts: Sonics are Thunder, Bullets are Wizards, New Jersey is Brooklyn, Vancouver is Memphis.</li>
+    </ul>
+    <table class="tiers"><thead><tr><th>Card</th><th>Picked by</th><th>Points</th></tr></thead><tbody>
+      ${TIERS.map(t => `<tr><td><span class="swatch ${t.cls}"></span>${t.name}</td><td>${t.range}</td><td>${t.pts}</td></tr>`).join('')}
+    </tbody></table>
+    <p>Scores update as more people play and lock at the end of the day.</p>
+    <button class="btn primary wide" id="helpClose">Got it</button></div>`);
+  $('helpClose').onclick = closeSheet;
+}
+
 function renderAccount(){
   const b = $('acctBtn'); b.hidden = false;
   b.textContent = !user ? 'Offline' : isGuest() ? 'Guest · save results' : '@' + (profile?.username || 'account');
@@ -826,7 +904,7 @@ function miniCard(s, i, flip, cur){
   if (s.status === 'blank') return `<div class="card t-blank${flip?' flip':''}"><span class="pn">✕</span></div>`;
   const t = TIERS.find(x => x.id === s.tier);
   const parts = s.pick.split(' '); let ln = parts.at(-1); if (/^(Jr\.|II|III)$/.test(ln)) ln = parts.at(-2);
-  return `<div class="card ${t.cls}${flip?' flip':''}" title="${esc(s.pick)}"><span class="tier">${t.short}</span><span class="pn" style="--len:${Math.max(5, ln.length)}">${esc(ln)}</span><span class="pct">+${s.pts}</span></div>`;
+  return `<div class="card ${t.cls}${flip?' flip':''}" title="${esc(s.pick)} · ${t.name} · picked by ${fmtPct(s.pct)} · +${s.pts}"><span class="tier">${t.short}</span><span class="pn" style="--len:${Math.max(5, ln.length)}">${esc(ln)}</span><span class="pct">${fmtPct(s.pct)}</span></div>`;
 }
 
 let lastPull = null, tick = null;
@@ -839,7 +917,7 @@ function render(flipIdx = -1){
     : 'Unlimited pack';
   $('total').textContent = totalPts();
   $('foot').textContent = `${DB_NOTE} · ` + (state.mode !== 'daily' ? 'test pack: simulated pick rates, nothing saved'
-    : state.online ? 'live pick rates' : 'offline: simulated pick rates');
+    : state.online ? 'live pick rates' : `offline: simulated pick rates${offlineWhy ? ' (' + offlineWhy + ')' : ''}`);
   $('tabDaily').setAttribute('aria-pressed', view === 'game' && state.mode === 'daily');
   $('tabRip').setAttribute('aria-pressed', view === 'game' && state.mode !== 'daily');
 
@@ -996,7 +1074,8 @@ async function submit(cands){
   const pct = rateOf(state, i, p.id), t = tierOf(pct);
   state.slots[i] = { status:'pulled', pick:name, id:p.id, pct, tier:t.id, pts:pointsOf(pct), strikes:slot.strikes };
   msg = {text:'',bad:false};
-  lastPull = { html:`<strong>${esc(name)}</strong> · ${t.name}${serial(t,name) ? ' ' + serial(t,name) : ''} · picked by ${fmtPct(pct)} · +${pointsOf(pct)}`, bad:false };
+  const tag = rateTag(state);
+  lastPull = { html:`<strong>${esc(name)}</strong> · ${t.name} · picked by ${fmtPct(pct)}${tag === 'live' ? ' so far' : ''} · +${pointsOf(pct)}<span class="tag ${tag}">${tag}</span>`, bad:false };
   Stage.pull(distOf(totalPts()), state.slots[i].pts);
   next(i);
 }
@@ -1015,13 +1094,99 @@ function shareText(){
   return `${head}\n${row}\n${total} / ${MAX_PTS} · 🏀 ${Math.round(d)} ft (${distLabel(d)})`;
 }
 let ratesFor = '';   // which daily pack's full pick rates have been fetched for the recap
-function renderResults(done){
-  if (!done) { $('results').innerHTML = ''; return; }
-  const live = state.mode === 'daily' && state.online;
-  if (live && ratesFor !== state.date) {
-    ratesFor = state.date;
-    rpc('get_pick_rates', { p_date:state.date }).then(rows => { loadRates(state.date, rows); renderResults(true); }).catch(() => {});
+/* today's board (get_day_board): everyone's current scores as a histogram, my rank, the deepest
+   real pick per prompt. Refreshed every minute while the results are open, until the day settles. */
+let board = null, boardTimer = 0;
+async function refreshBoard(){
+  clearTimeout(boardTimer);
+  const date = state.date;
+  if (state.mode !== 'daily' || !state.online || state.slots.some(s => s.status === 'open')) return;
+  try {
+    await sendScore(state);
+    const [b, rows] = await Promise.all([rpc('get_day_board', { p_date:date }, 6000), rpc('get_pick_rates', { p_date:date }, 6000)]);
+    if (state.date !== date) return;
+    loadRates(date, rows); board = { date, ...b };
+    renderResults(true);
+    if (!b.final) boardTimer = setTimeout(refreshBoard, 60000);
+  } catch(e){ console.warn('board', e); boardTimer = setTimeout(refreshBoard, 60000); }
+}
+const nth = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th','st','nd','rd'][n % 10] || 'th');
+/* "You beat 82% of players today" + rank */
+function standingHTML(b){
+  if (!b.me) return '';
+  const others = b.players - 1, beat = others > 0 ? Math.round(100 * b.me.below / others) : 0;
+  const ties = b.players - b.me.below - b.me.rank;
+  return `<div class="standing">
+    <div><b>${others > 0 ? beat + '%' : '1st'}</b><small>${others > 0 ? `of players beaten${b.final ? '' : ' so far'}` : 'to finish today'}</small></div>
+    <div><b>#${b.me.rank}</b><small>of ${b.players.toLocaleString()}${ties > 0 ? ` · tied with ${ties}` : ''}</small></div>
+  </div>`;
+}
+/* score curve: bars of 50 points, a smoothed curve over them, my marker, a few "top X%" labels */
+function curveHTML(b){
+  const n = b.players, hist = b.hist || [];
+  if (!n) return '';
+  const W = 340, H = 150, top = 26, base = H - 22, x = v => 8 + (W - 16) * v / MAX_PTS;
+  const bins = Array.from({ length:MAX_PTS / 50 }, (_, k) => hist.slice(k * 5, k * 5 + 5).reduce((a, c) => a + c, 0));
+  bins[bins.length - 1] += hist[MAX_PTS / 10] || 0;   // 800 goes in the last bar
+  // smoothed: a gaussian over each 10-point bucket, scaled to bar units (players per 50 points)
+  const bw = Math.max(25, 60 / Math.cbrt(n) * 4);
+  const curve = [];
+  for (let v = 0; v <= MAX_PTS; v += 10) {
+    let d = 0; hist.forEach((c, k) => { if (c) { const z = (v - (k * 10 + 5)) / bw; d += c * Math.exp(-z * z / 2); } });
+    curve.push([v, d * 50 / (bw * Math.sqrt(2 * Math.PI))]);
   }
+  const peak = Math.max(1, ...bins, ...curve.map(c => c[1]));
+  const y = c => base - (base - top) * c / peak;
+  const bars = bins.map((c, k) => c ? `<rect x="${x(k * 50) + 1}" y="${y(c)}" width="${x(50) - x(0) - 2}" height="${base - y(c)}" rx="2"/>` : '').join('');
+  const path = curve.map(([v, c], i) => (i ? 'L' : 'M') + x(v).toFixed(1) + ' ' + y(c).toFixed(1)).join(' ');
+  // "top X%: S+" labels from the real scores (only once there are enough players to mean something)
+  const cut = share => { let acc = 0; for (let k = hist.length - 1; k >= 0; k--) { acc += hist[k]; if (acc >= share * n) return k * 10; } return 0; };
+  const marks = n >= 20 ? [[0.1, 'top 10%'], [0.5, 'top half']].map(([sh, label]) => [cut(sh), label]) : [];
+  const me = b.me ? b.me.score : null;
+  const pctile = b.me && n > 1 ? Math.round(100 * b.me.below / (n - 1)) : null;
+  const lbl = (v, txt, cls) => {
+    const anchor = x(v) < 60 ? 'start' : x(v) > W - 60 ? 'end' : 'middle';
+    return `<text class="${cls}" x="${x(v)}" text-anchor="${anchor}"`;
+  };
+  return `<figure class="curve">
+    <figcaption>Today's scores <span class="tag ${b.final ? 'final' : 'live'}">${b.final ? 'final' : 'live'}</span></figcaption>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Distribution of today's scores from 0 to ${MAX_PTS}${me != null ? `; you scored ${me}` : ''}">
+      <g class="bars">${bars}</g>
+      <path class="line" d="${path}"/>
+      <line class="axis" x1="${x(0)}" x2="${x(MAX_PTS)}" y1="${base}" y2="${base}"/>
+      ${[0, 200, 400, 600, 800].map(v => `${lbl(v, '', 'tick')} y="${H - 6}">${v}</text>`).join('')}
+      ${marks.map(([v, label], i) => {   // label on the side away from my marker
+        const left = me != null ? v <= me : x(v) > W / 2;
+        return `<line class="cut" x1="${x(v)}" x2="${x(v)}" y1="${top + 2 + i * 12}" y2="${base}"/><text class="cutl" x="${x(v) + (left ? -4 : 4)}" text-anchor="${left ? 'end' : 'start'}" y="${top + 9 + i * 12}">${label}: ${v}+</text>`;
+      }).join('')}
+      ${me != null ? `<line class="me" x1="${x(me)}" x2="${x(me)}" y1="10" y2="${base}"/><circle class="me" cx="${x(me)}" cy="${base}" r="4"/>${lbl(me, '', 'mel')} y="9">You ${me}${pctile != null ? ` · beat ${pctile}%` : ''}</text>` : ''}
+    </svg>
+    ${n < 20 ? `<p class="fine">Early: ${n} player${n > 1 ? 's' : ''} so far. The curve fills in as more people finish.</p>` : ''}
+  </figure>`;
+}
+/* per-prompt reveal: my pick, the most picked, the 3 deepest valid answers, the deepest real pull */
+function revealHTML(i){
+  const pid = state.prompts[i], l = rateList(state, i), s = state.slots[i], tag = rateTag(state);
+  const live = tag === 'live', top = l[0], deep3 = l.slice(-3).reverse();
+  const t = s.status === 'pulled' ? TIERS.find(t => t.id === s.tier) : null;
+  const real = board?.date === state.date && board.deepest?.find(d => d.prompt_idx === i);
+  const realName = real && (BY_ID.get(real.player_id)?.n || `Player #${real.player_id}`);
+  return `<li>
+    <b>${i + 1}. ${esc(PROMPTS[pid].text)}<span class="tag ${tag}">${tag}</span></b>
+    <div class="mine">${t ? `<span class="swatch ${t.cls}"></span><strong>${esc(s.pick)}</strong> · ${fmtPct(rateOf(state, i, s.id))}${live ? ' so far' : ''} · ${t.name} +${s.pts}` : '<span class="swatch brick"></span>Brick · 0'}</div>
+    <dl>
+      <dt>Most picked</dt><dd>${esc(top.n)} <i>${fmtPct(top.pct)}</i></dd>
+      ${real ? `<dt>Deepest pull today</dt><dd>${esc(realName)} <i>${fmtPct(real.pct)} · ${real.picks} pick${real.picks > 1 ? 's' : ''}</i></dd>` : ''}
+      <dt>Deepest answers</dt><dd>${deep3.map(d => `${esc(d.n)} <i>${fmtPct(d.pct)}</i>`).join(', ')}</dd>
+    </dl>
+    <div class="fine">${l.length} players fit</div>
+  </li>`;
+}
+function renderResults(done){
+  if (!done) { $('results').innerHTML = ''; clearTimeout(boardTimer); return; }
+  const live = state.mode === 'daily' && state.online;
+  if (live && ratesFor !== state.date) { ratesFor = state.date; refreshBoard(); }
+  const b = live && board?.date === state.date ? board : null;
   const lock = new Date(closesAt(state.date)).toLocaleString(undefined, { weekday:'short', hour:'numeric', minute:'2-digit' });
   const status = !live ? (state.mode === 'daily' ? 'Offline: scored on simulated pick rates.' : '')
     : state.settled ? 'Final score: pick rates are locked.'
@@ -1033,14 +1198,13 @@ function renderResults(done){
     <div class="big">${total}<small>/ ${MAX_PTS} · shot from ${Math.round(distOf(total))} ft</small></div>
     ${status ? `<div class="meta">${status}</div>` : ''}
     ${best ? `<div class="meta">Best pull: <strong>${esc(best.pick)}</strong>, picked by ${fmtPct(best.pct)} of players.</div>` : ''}
+    ${b ? standingHTML(b) + curveHTML(b) : ''}
     ${saveCard()}
     <pre class="share" id="shareTxt">${esc(shareText())}</pre>
     ${state.mode === 'daily' ? `<div class="next" id="nextPack">${nextPackText()}</div>` : ''}
     <div class="actions"><button class="btn primary" id="copyBtn">Copy result</button>${TEST_MODE ? '<button class="btn" id="ripBtn2">Another test pack</button>' : ''}</div>
-    <ul class="recap">${state.prompts.map((pid, i) => {
-      const l = rateList(state, i), top = l[0], deep = l[l.length-1];
-      return `<li><b>${esc(PROMPTS[pid].text)}</b>Most picked: ${esc(top.n)} (${fmtPct(top.pct)}) · Deepest in the vault: ${esc(deep.n)} (${fmtPct(deep.pct)}) · ${l.length} fit</li>`;
-    }).join('')}</ul>
+    <h3 class="rh">The reveal</h3>
+    <ul class="recap">${state.prompts.map((pid, i) => revealHTML(i)).join('')}</ul>
   </div>`;
   $('copyBtn').addEventListener('click', async e => {
     try { await navigator.clipboard.writeText(shareText()); e.target.textContent = 'Copied'; }
@@ -1349,13 +1513,14 @@ if (TEST_MODE) { $('tabRip').hidden = false; $('tabRip').textContent = 'Test pac
 async function openDaily(){
   let st = load() || freshState('daily', 'daily-' + localKey());
   if (st.started === undefined) st.started = st.slots.some(s => s.status !== 'open');
-  if (!st.online && !st.started) await syncPack(st);   // retry until the pack is started
+  if (!st.online && st.mode === 'daily') await syncPack(st);   // keep retrying, even mid-pack
   await reconcileDay(st);
   save(st);
   return st;
 }
 $('tabStats').addEventListener('click', () => { if (state) showStats(); });
 $('acctBtn').addEventListener('click', sheetAccount);
+$('helpBtn').addEventListener('click', sheetHelp);
 $('tabDaily').addEventListener('click', async () => {
   if (!state) return;
   setView('game');

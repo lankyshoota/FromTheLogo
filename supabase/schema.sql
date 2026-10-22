@@ -482,6 +482,60 @@ $$;
 
 -- ---------------------------------------------------------------- permissions
 
+-- ---------------------------------------------------------------- results screen
+
+-- How a finished day looks for everyone, for the results screen (daily pack only):
+--   players   how many finished the pack
+--   hist      81 counts: hist[k] = players whose current score is 10k..10k+9 (0-800)
+--   me        my current score, rank (1 + players who scored more) and below (players who scored less)
+--   deepest   per prompt, the rarest pick anyone made today (player, %, picks)
+--   final     true once the date has closed
+-- Scores are recomputed from everyone's picks with the same blend as pick_scores, so the curve
+-- moves as people play and locks when the day settles. Only counts and scores come out, no users.
+create or replace function get_day_board(p_date date)
+returns jsonb
+language sql stable security definer
+set search_path = public
+as $$
+  with me as (select require_user() as id),
+  counts as (
+    select prompt_idx, player_id, count(*)::int as same,
+           sum(count(*)) over (partition by prompt_idx)::int as total
+    from picks where pack_date = p_date group by prompt_idx, player_id
+  ),
+  scored as (
+    select p.user_id, p.prompt_idx, p.player_id, c.same,
+           (100.0 * (c.same + p.sim_pct) / (c.total + 100))::real as pct
+    from picks p join counts c on c.prompt_idx = p.prompt_idx and c.player_id = p.player_id
+    where p.pack_date = p_date
+  ),
+  board as (
+    select s.user_id, coalesce(sum(case when x.pct >= 25 then 10 when x.pct >= 10 then 25 when x.pct >= 5 then 40
+                                        when x.pct >= 2 then 60 when x.pct >= 0.5 then 80 else 100 end), 0)::int as score
+    from submissions s left join scored x on x.user_id = s.user_id
+    where s.pack_date = p_date
+    group by s.user_id
+  ),
+  mine as (select score from board where user_id = (select id from me)),
+  deep as (
+    select distinct on (prompt_idx) prompt_idx, player_id, pct, same
+    from scored order by prompt_idx, pct, player_id
+  )
+  select jsonb_build_object(
+    'players', (select count(*) from board),
+    'hist',    (select jsonb_agg(coalesce(n, 0) order by k)
+                from generate_series(0, 80) k
+                left join (select score / 10 as b, count(*)::int n from board group by 1) h on h.b = k),
+    'me',      (select jsonb_build_object('score', m.score,
+                                          'rank',  1 + (select count(*) from board where score > m.score),
+                                          'below', (select count(*) from board where score < m.score))
+                from mine m),
+    'deepest', coalesce((select jsonb_agg(jsonb_build_object('prompt_idx', prompt_idx, 'player_id', player_id,
+                                                             'pct', pct, 'picks', same) order by prompt_idx)
+                         from deep), '[]'::jsonb),
+    'final',   not pack_date_open(p_date));
+$$;
+
 -- Supabase grants new functions to anon by default, so revoke everything, then
 -- grant only what the game calls. Guests and accounts are both "authenticated".
 do $$
@@ -493,7 +547,8 @@ begin
     'get_pick_rates(date)', 'submit_score(date, smallint)', 'get_my_day(date)',
     'username_available(text)', 'set_username(text)', 'get_profile()',
     'start_transfer()', 'claim_transfer(uuid)', 'get_my_stats(date)',
-    'get_fame_model()', 'get_closed_day(date)', 'propose_fame_model(date, jsonb)']
+    'get_fame_model()', 'get_closed_day(date)', 'propose_fame_model(date, jsonb)',
+    'get_day_board(date)']
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f);
   end loop;
@@ -512,3 +567,4 @@ grant execute on function get_my_stats(date)                       to authentica
 grant execute on function get_fame_model()                         to anon, authenticated;
 grant execute on function get_closed_day(date)                     to anon, authenticated;
 grant execute on function propose_fame_model(date, jsonb)          to authenticated;
+grant execute on function get_day_board(date)                     to authenticated;

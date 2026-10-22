@@ -151,7 +151,19 @@ steps and check in before big changes.
   tier, rarest pull (player, prompt, %), history. Picks store sim_pct so the server can apply
   the same cold-start blend.
 - **Offline:** every call times out (~4s). No Supabase = simulated rates; unsent picks are
-  retried on the next visit while the date is open.
+  retried on the next visit while the date is open. The game keeps retrying get_or_create_pack on every
+  visit, even mid-pack: if the stored pack matches, it goes live and sends the picks made offline.
+  The reason it's offline (library didn't load, guest sign-in off, RPC error...) shows in the
+  footer and the Offline panel.
+- **Results screen (daily only):** get_day_board(date) recomputes everyone's current score from
+  picks (same blend as pick_scores) and returns players, a histogram in 10-point buckets, my rank
+  and how many I beat, and the deepest real pick per prompt. Only counts/scores, no users. The
+  game shows "You beat X%" + "#rank of N", a score curve (bars of 50, smoothed curve, my marker,
+  "top 10%" / "top half" labels once 20+ players; "Early: N players so far" before that),
+  refreshed every minute until the day settles; then the per-prompt reveal: my pick (%, tier),
+  most picked, deepest pull today, 3 deepest valid answers. Pick % shows on cards and is tagged
+  live / final / est.
+- **"?" button** (header) opens the how-to panel with the tier table.
 
 ## Game rules (decided — don't change without asking)
 - **One pack a day. Core rule.** No unlimited mode in the public game. After the daily pack the
