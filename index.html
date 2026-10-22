@@ -156,6 +156,7 @@ details.how p{margin:.6em 0 0;color:var(--muted);max-width:60ch}
 .recap li{border-top:1px solid var(--line);padding-top:10px;font-size:15px;color:var(--muted)}
 .recap li b{color:var(--text);display:block;font-weight:600}
 .actions{display:flex;gap:8px;flex-wrap:wrap}
+.next{font:600 13px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
 .foot{font:500 12px var(--mono);color:var(--muted);letter-spacing:.04em;text-align:center}
 /* accounts */
 .chip{display:inline-block;margin-top:8px;font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--gold);background:rgba(232,184,74,.1);border:1px solid rgba(232,184,74,.35);border-radius:999px;padding:4px 10px;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -232,13 +233,13 @@ body[data-view="stats"] .g{display:none}
   <section class="stats" id="statsView" aria-live="polite"></section>
   <div class="tabs" role="group" aria-label="Mode">
     <button id="tabDaily" aria-pressed="true">Daily pack</button>
-    <button id="tabRip" aria-pressed="false">Rip a new pack</button>
+    <button id="tabRip" aria-pressed="false" hidden>Test pack</button>
     <button id="tabStats" aria-pressed="false">Stats</button>
   </div>
 
   <details class="how g">
     <summary>How to play</summary>
-    <p>Eight NBA prompts, same for everyone today. Name a player who fits each one. The fewer people who pick your guy, the rarer the card you pull and the more it's worth. LeBron fits a lot of prompts. He's also worth almost nothing.</p>
+    <p>One pack a day: eight NBA prompts, same for everyone. Name a player who fits each one. The fewer people who pick your guy, the rarer the card you pull and the more it's worth. LeBron fits a lot of prompts. He's also worth almost nothing.</p>
     <p>Every point moves your shooter one foot further from the rim. A 100-point pull sends him back 100 feet.</p>
     <p>One prompt at a time with a 20-second clock. Three tries per prompt; run out of time or tries and it's a brick. Each player can only be used once per pack. Franchise history counts: Sonics = Thunder, Bullets = Wizards, Vancouver = Grizzlies, New Jersey = Nets.</p>
     <div class="ladder">
@@ -284,6 +285,9 @@ async function loadPlayers(){
    describes it ("pair:LAL:MIA"), so PROMPTS[id] works for any id, including ones in
    packs stored before players.json changed. Unknown ids give undefined. */
 let GEN = null, RM = null;
+/* One pack a day. ?test=1 turns on a hidden test mode (for Lanky): unlimited practice packs that
+   never save picks, so prompts and scoring can be tried without using up the daily pack. */
+const TEST_MODE = new URLSearchParams(location.search).get('test') === '1';
 const PACK_SIZE = FTLPrompts.PACK_SIZE;   // prompts per pack (8)
 const MAX_PTS = PACK_SIZE * 100;          // a perfect pack: all 1 of 1s
 const PROMPTS = new Proxy({}, { get: (_, id) => (GEN && typeof id === 'string' && GEN.get(id)) || undefined });
@@ -299,7 +303,7 @@ let oddsCache = {};
 function odds(pid){
   if (oddsCache[pid]) return oddsCache[pid];
   const valid = PLAYERS.filter(PROMPTS[pid].test);
-  const share = RM.sim(valid, pid);
+  const share = RM.sim(valid, pid, undefined, undefined, PROMPTS[pid].teams);   // team prompts weigh how tied each player is to the team
   const list = valid.map(p => ({ id:p.id, n:p.n, pct: 100 * share.get(p.id) })).sort((a,b)=>b.pct-a.pct);
   return oddsCache[pid] = { list, map: new Map(list.map(x=>[x.id,x.pct])) };
 }
@@ -462,7 +466,7 @@ function trainingDay(day){
   return (day.prompts || []).map((pr, i) => {
     const def = PROMPTS[pr.id];
     if (!def) return null;
-    return { seed: pr.id, answers: PLAYERS.filter(def.test),
+    return { seed: pr.id, teams: def.teams, answers: PLAYERS.filter(def.test),
              counts: new Map((day.picks || []).filter(x => x.prompt_idx === i).map(x => [x.player_id, x.picks])) };
   }).filter(Boolean);
 }
@@ -834,7 +838,7 @@ function render(flipIdx = -1){
     ? `Pack #${dayNum} · ${today.toLocaleDateString(undefined,{month:'short',day:'numeric'})}`
     : 'Unlimited pack';
   $('total').textContent = totalPts();
-  $('foot').textContent = `${DB_NOTE} · ` + (state.mode !== 'daily' ? 'unlimited packs use simulated pick rates'
+  $('foot').textContent = `${DB_NOTE} · ` + (state.mode !== 'daily' ? 'test pack: simulated pick rates, nothing saved'
     : state.online ? 'live pick rates' : 'offline: simulated pick rates');
   $('tabDaily').setAttribute('aria-pressed', view === 'game' && state.mode === 'daily');
   $('tabRip').setAttribute('aria-pressed', view === 'game' && state.mode !== 'daily');
@@ -845,7 +849,7 @@ function render(flipIdx = -1){
   if (!done && !state.started) {
     panel = `<div class="panel">
       <span class="num">${PACK_SIZE} prompts · 20 seconds each</span>
-      <span class="prompt big">${state.mode === 'daily' ? "Ready to rip today's pack?" : 'Ready to rip a pack?'}</span>
+      <span class="prompt big">${state.mode === 'daily' ? "Ready to rip today's pack?" : 'Ready to rip a test pack?'}</span>
       <span class="meta">One prompt at a time. The clock starts as soon as each prompt shows up. Run out of time and it's a brick.</span>
       <button class="btn primary" id="startBtn">Start pack</button>
     </div>`;
@@ -1006,7 +1010,7 @@ function next(i){
 function shareText(){
   const total = state.slots.reduce((a,s)=>a+(s.pts||0),0);
   const row = state.slots.map(s => s.status === 'blank' ? '❌' : TIERS.find(t=>t.id===s.tier).emoji).join('');
-  const head = state.mode === 'daily' ? `FromTheLogo #${dayNum}` : 'FromTheLogo · unlimited';
+  const head = state.mode === 'daily' ? `FromTheLogo #${dayNum}` : 'FromTheLogo · test pack';
   const d = distOf(total);
   return `${head}\n${row}\n${total} / ${MAX_PTS} · 🏀 ${Math.round(d)} ft (${distLabel(d)})`;
 }
@@ -1031,7 +1035,8 @@ function renderResults(done){
     ${best ? `<div class="meta">Best pull: <strong>${esc(best.pick)}</strong>, picked by ${fmtPct(best.pct)} of players.</div>` : ''}
     ${saveCard()}
     <pre class="share" id="shareTxt">${esc(shareText())}</pre>
-    <div class="actions"><button class="btn primary" id="copyBtn">Copy result</button><button class="btn" id="ripBtn2">Rip another pack</button></div>
+    ${state.mode === 'daily' ? `<div class="next" id="nextPack">${nextPackText()}</div>` : ''}
+    <div class="actions"><button class="btn primary" id="copyBtn">Copy result</button>${TEST_MODE ? '<button class="btn" id="ripBtn2">Another test pack</button>' : ''}</div>
     <ul class="recap">${state.prompts.map((pid, i) => {
       const l = rateList(state, i), top = l[0], deep = l[l.length-1];
       return `<li><b>${esc(PROMPTS[pid].text)}</b>Most picked: ${esc(top.n)} (${fmtPct(top.pct)}) · Deepest in the vault: ${esc(deep.n)} (${fmtPct(deep.pct)}) · ${l.length} fit</li>`;
@@ -1041,7 +1046,8 @@ function renderResults(done){
     try { await navigator.clipboard.writeText(shareText()); e.target.textContent = 'Copied'; }
     catch { const r = document.createRange(); r.selectNodeContents($('shareTxt')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); e.target.textContent = 'Selected, copy it'; }
   });
-  $('ripBtn2').addEventListener('click', rip);
+  $('ripBtn2')?.addEventListener('click', rip);
+  armCountdown();
   $('saveBtn')?.addEventListener('click', () => sheetAuth('signup'));
   $('saveNo')?.addEventListener('click', () => { try { localStorage.setItem('fromthelogo:saveDismissed', state.date); } catch(e){} renderResults(true); });
 }
@@ -1321,8 +1327,25 @@ const Stage = (() => {
   };
 })();
 
-function rip(){ if (!state) return; setView('game'); state = freshState('unlimited', 'rip-' + Date.now() + Math.random()); state.started = true; lastPull = null; msg={text:'',bad:false}; Stage.set(distOf(0)); render(); window.scrollTo({top:0,behavior:'smooth'}); focusInput(); }
+/* countdown to the next daily pack (local midnight); reloads when it's ready */
+function nextPackText(){
+  const now = new Date(), next = new Date(now); next.setHours(24, 0, 0, 0);
+  const mins = Math.max(0, Math.ceil((next - now) / 60000));
+  return mins ? `Next pack in ${Math.floor(mins / 60)}h ${mins % 60}m` : 'New pack is ready';
+}
+let countdown = null;
+function armCountdown(){
+  clearInterval(countdown);
+  if (!$('nextPack')) return;
+  const day = localKey();
+  countdown = setInterval(() => {
+    if (localKey() !== day) { clearInterval(countdown); location.reload(); return; }
+    const el = $('nextPack'); if (el) el.textContent = nextPackText(); else clearInterval(countdown);
+  }, 30000);
+}
+function rip(){ if (!state || !TEST_MODE) return; setView('game'); state = freshState('unlimited', 'rip-' + Date.now() + Math.random()); state.started = true; lastPull = null; msg={text:'',bad:false}; Stage.set(distOf(0)); render(); window.scrollTo({top:0,behavior:'smooth'}); focusInput(); }
 $('tabRip').addEventListener('click', rip);
+if (TEST_MODE) { $('tabRip').hidden = false; $('tabRip').textContent = 'Test pack (not saved)'; }
 async function openDaily(){
   let st = load() || freshState('daily', 'daily-' + localKey());
   if (st.started === undefined) st.started = st.slots.some(s => s.status !== 'open');

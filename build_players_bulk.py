@@ -332,7 +332,10 @@ def apply_cached_details(rec: dict, rings: int):
     fame = bp.CACHE / "fame" / f"views_{pid}.json"
     if fame.exists():
         try:
-            rec["fame"] = int(json.loads(fame.read_text()).get("views") or 0)
+            c = json.loads(fame.read_text())
+            rec["fame"] = int(c.get("views") or 0)
+            if "views10" in c:
+                rec["fame10"], rec["langs"] = int(c.get("views10") or 0), int(c.get("langs") or 0)
         except (ValueError, OSError):
             pass
     info = cached(f"info_{pid}")
@@ -394,8 +397,9 @@ def finish(players: list[dict]) -> list[dict]:
         o = {k: r[k] for k in keys}
         if r.get("ad"):
             o["ad"] = 1
-        if r.get("fame") is not None:
-            o["fame"] = r["fame"]
+        for k in ("fame", "fame10", "langs"):
+            if r.get(k) is not None:
+                o[k] = r[k]
         out.append(o)
     return sorted(out, key=lambda r: r["n"])
 

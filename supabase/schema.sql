@@ -458,21 +458,21 @@ begin
   if prev_date is not null and p_date <> prev_date + 1 then
     raise exception 'next model must be for %', prev_date + 1;
   end if;
-  if prev is null then   -- rarity.js DEFAULT_MODEL
-    prev := '{"v":1,"w":{"views":0.6,"playoffs":0.12,"seasons":0.08,"awards":0.12,"recency":0.08},
-              "center":0.9,"steep":20,"spread":0.1,"pull":12}';
+  if prev is null or prev -> 'w' -> 'legacy' is null then   -- none yet, or an older model: rarity.js DEFAULT_MODEL
+    prev := '{"v":2,"w":{"views":0.5,"legacy":0.2,"langs":0.1,"playoffs":0.12,"seasons":0.08,"awards":0.12,"recency":0.08},
+              "center":0.97,"steep":30,"spread":0.1,"pull":6,"team":0.3}';
   end if;
-  foreach f in array array['views','playoffs','seasons','awards','recency'] loop
+  foreach f in array array['views','legacy','langs','playoffs','seasons','awards','recency'] loop
     if jsonb_typeof(p_model -> 'w' -> f) <> 'number'
        or (p_model -> 'w' ->> f)::numeric not between 0.01 and 1
        or abs((p_model -> 'w' ->> f)::numeric - (prev -> 'w' ->> f)::numeric) > 0.06 then
       raise exception 'bad weight %', f;
     end if;
   end loop;
-  if jsonb_typeof(p_model -> 'pull') <> 'number' or (p_model ->> 'pull')::numeric not between 1 and 20
+  if jsonb_typeof(p_model -> 'pull') <> 'number' or (p_model ->> 'pull')::numeric not between 1 and 24
      or abs((p_model ->> 'pull')::numeric / (prev ->> 'pull')::numeric - 1) > 0.16
      or p_model -> 'center' <> prev -> 'center' or p_model -> 'steep' <> prev -> 'steep'
-     or p_model -> 'spread' <> prev -> 'spread' then
+     or p_model -> 'spread' <> prev -> 'spread' or p_model -> 'team' is distinct from prev -> 'team' then
     raise exception 'bad model settings';
   end if;
   insert into fame_models (model_date, model) values (p_date, p_model) on conflict (model_date) do nothing;

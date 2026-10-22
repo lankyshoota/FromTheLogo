@@ -18,18 +18,23 @@
 (function (root) {
   'use strict';
 
-  const FEATURES = ['views', 'playoffs', 'seasons', 'awards', 'recency'];
+  // views = Wikipedia views, last 12 months; legacy = average yearly views over ~10 years (so
+  // legends aren't buried under this season's hype); langs = how many language Wikipedias
+  // have an article on him (timeless fame). Missing legacy/langs data counts as views.
+  const FEATURES = ['views', 'legacy', 'langs', 'playoffs', 'seasons', 'awards', 'recency'];
   const DEFAULT_MODEL = {
-    v: 1,
-    w: { views: 0.6, playoffs: 0.12, seasons: 0.08, awards: 0.12, recency: 0.08 },
-    center: 0.9,    // an average fan has a 50% chance to recall a player at this recognition percentile
-    steep: 20,      // how fast recall drops off below that
+    v: 2,
+    w: { views: 0.5, legacy: 0.2, langs: 0.1, playoffs: 0.12, seasons: 0.08, awards: 0.12, recency: 0.08 },
+    center: 0.97,   // an average fan has a 50% chance to recall a player at this recognition percentile
+    steep: 30,      // how fast recall drops off below that
     spread: 0.1,    // how much fans differ (some know far more players than others)
-    pull: 12,       // how strongly a fan names the most recognizable player they thought of
+    pull: 6,        // how strongly a fan names the most recognizable player they thought of
+    team: 0.3,      // team prompts: how much a weak tie to the team lowers recognition
   };
+  const HUNTERS = 6;   // deep-cut appetite = random^HUNTERS: most fans name the stars, a few hunt
   const K = 100;    // real picks needed before they outweigh the simulation (Bayesian prior strength)
   const FANS = 4000;
-  const BOUNDS = { w: [0.01, 1], center: [0.5, 0.95], steep: [4, 30], spread: [0.02, 0.3], pull: [1, 20] };
+  const BOUNDS = { w: [0.01, 1], center: [0.5, 0.97], steep: [4, 30], spread: [0.02, 0.3], pull: [1, 24], team: [0, 0.9] };
 
   const clamp = (x, [lo, hi]) => Math.min(hi, Math.max(lo, x));
 
@@ -50,6 +55,8 @@
     const s = p.s || [];
     return {
       views: Math.log10((p.fame > 0 ? p.fame : 0) + 100),
+      legacy: Math.log10((p.fame10 > 0 ? p.fame10 : 0) + 100),
+      langs: Math.log1p(p.langs > 0 ? p.langs : 0),
       playoffs: Math.log1p((p.ps || []).reduce((a, x) => a + x[2], 0)),
       seasons: new Set(s.map(x => x[0])).size,
       awards: Math.log1p((aw.AS || 0) + 1.5 * (aw.ALLNBA || 0) + 4 * (aw.MVP || 0) + 3 * (aw.FMVP || 0)
@@ -67,7 +74,8 @@
        setModel(m)  switch to a newer (self-corrected) model */
   function create(players, model = DEFAULT_MODEL) {
     const raws = players.map(raw);
-    const has = { views: players.some(p => p.fame > 0), playoffs: true, seasons: true, awards: true, recency: true };
+    const has = { views: players.some(p => p.fame > 0), legacy: players.some(p => p.fame10 > 0),
+                  langs: players.some(p => p.langs > 0), playoffs: true, seasons: true, awards: true, recency: true };
     // scale each feature to 0-1 between its 1st and 99.9th percentile, so a few outliers don't squash the rest
     for (const f of FEATURES) {
       const vals = raws.map(r => r[f]).sort((a, b) => a - b);
@@ -75,9 +83,11 @@
       players.forEach((p, i) => { (p._f = p._f || {})[f] = hi > lo ? Math.min(1, Math.max(0, (raws[i][f] - lo) / (hi - lo))) : 0; });
     }
     const recog = m => {
+      const w = { ...m.w };
+      for (const f of ['legacy', 'langs']) if (!has[f] && has.views) w.views += w[f];   // no data yet: lean on views
       const used = FEATURES.filter(f => has[f]);
-      const total = used.reduce((a, f) => a + m.w[f], 0);
-      return players.map(p => used.reduce((a, f) => a + m.w[f] * p._f[f], 0) / total);
+      const total = used.reduce((a, f) => a + w[f], 0);
+      return players.map(p => used.reduce((a, f) => a + w[f] * p._f[f], 0) / total);
     };
     const pct = vals => {
       const order = vals.map((v, i) => [v, i]).sort((a, b) => a[0] - b[0]), out = new Array(vals.length);
@@ -97,16 +107,35 @@
     }
     setModel(model);
 
-    /* simulate fans on one prompt. Returns Map(player id -> share of picks, 0-1). */
-    function sim(answers, seed = 'x', fans = FANS, m = cur) {
+    /* how tied a player is to a team, 0-1: seasons there, games there, share of his career there,
+       and playoff games there (Rodman's 3 title runs make him a Bull) */
+    function tie(p, t) {
+      let seasons = new Set(), games = 0, all = 0, po = 0;
+      for (const s of p.s || []) { all += s[2]; if (s[1] === t) { seasons.add(s[0]); games += s[2]; } }
+      for (const s of p.ps || []) if (s[1] === t) po += s[2];
+      return 0.3 * Math.min(1, seasons.size / 10) + 0.2 * Math.min(1, games / 700) + 0.25 * (all ? games / all : 0)
+        + 0.25 * Math.min(1, po / 40);
+    }
+    /* recognition on a prompt: on team prompts a famous player who barely played there is
+       less likely to come to mind (Wade on the Bulls) than the team's own (Jordan, Pippen) */
+    function effective(p, teams = [], m = cur) {
+      const r = R.get(p.id) ?? 0;
+      if (!teams.length) return r;
+      const t = teams.reduce((a, x) => a + tie(p, x), 0) / teams.length;
+      return r * (1 - m.team * (1 - t));
+    }
+
+    /* simulate fans on one prompt. teams: the prompt's teams (team, pair and team + decade prompts).
+       Returns Map(player id -> share of picks, 0-1). */
+    function sim(answers, seed = 'x', fans = FANS, m = cur, teams = []) {
       const rnd = mulberry(h32(String(seed)));
-      const n = answers.length, counts = new Float64Array(n), Rs = answers.map(p => R.get(p.id) ?? 0);
+      const n = answers.length, counts = new Float64Array(n), Rs = answers.map(p => effective(p, teams, m));
       const recalled = new Int32Array(n);
       let pickers = 0;
       for (let f = 0; f < fans; f++) {
         // this fan: how much they know (normal), and their appetite for deep cuts (most have little)
         const shift = m.spread * Math.sqrt(-2 * Math.log(rnd() || 1e-12)) * Math.cos(2 * Math.PI * rnd());
-        const deep = Math.pow(rnd(), 3);              // 0 = names the biggest star, 1 = hunts deep cuts
+        const deep = Math.pow(rnd(), HUNTERS);        // 0 = names the biggest star, 1 = hunts deep cuts
         const lambda = m.pull * (1 - 2 * deep);
         let k = 0, best = -Infinity;
         for (let i = 0; i < n; i++) {
@@ -147,14 +176,14 @@
       for (const pr of day) {
         const N = [...pr.counts.values()].reduce((a, b) => a + b, 0);
         if (N < 30 || pr.answers.length < 2) continue;   // too few picks to learn from
-        const pred = sim(pr.answers, pr.seed, 2000);
+        const pred = sim(pr.answers, pr.seed, 2000, m, pr.teams || []);
         const A = pr.answers.length;
         for (const p of pr.answers) {
           const act = ((pr.counts.get(p.id) || 0) + 0.5) / (N + 0.5 * A);
           const prd = (pred.get(p.id) * 2000 + 0.5) / (2000 + 0.5 * A);
           // answers picked more than predicted pull the weights toward what they're strong in.
           // Recognition is a weighted average, so raising w[f] helps a player by (feature - recognition).
-          const r = R.get(p.id);
+          const r = effective(p, pr.teams || [], m);
           for (const f of FEATURES) if (has[f]) grad[f] += (act - prd) * (p._f[f] - r);
           concAct += act * act; concPred += prd * prd;
         }
@@ -170,50 +199,17 @@
       return next;
     }
 
-    return { sim, quick, update, setModel, model: () => cur, recognition: p => R.get(p.id), has };
+    return { sim, quick, update, setModel, model: () => cur, recognition: p => R.get(p.id), effective, tie, has };
   }
 
   /* blended rate in % (simShare 0-1): real picks take over as they come in */
   const blend = (picks, total, simShare) => 100 * (picks + K * simShare) / (total + K);
 
-  /* one self-correcting step from a settled day.
-     day: [{ answers: [players], counts: Map(id -> picks), seed }], players already prepare()d */
-  function update(model, day, players, has) {
-    const next = JSON.parse(JSON.stringify(model));
-    const grad = Object.fromEntries(FEATURES.map(f => [f, 0]));
-    let used = 0, concAct = 0, concPred = 0;
-    for (const pr of day) {
-      const N = [...pr.counts.values()].reduce((a, b) => a + b, 0);
-      if (N < 30 || pr.answers.length < 2) continue;   // too few picks to learn from
-      const pred = simulate(pr.answers, { seed: pr.seed, model, fans: 2000 });
-      const A = pr.answers.length;
-      for (const p of pr.answers) {
-        const act = ((pr.counts.get(p.id) || 0) + 0.5) / (N + 0.5 * A);
-        const prd = (pred.get(p.id) * 2000 + 0.5) / (2000 + 0.5 * A);
-        // softmax gradient: answers picked more than predicted pull weight toward their features
-        for (const f of FEATURES) if (has[f]) grad[f] += (act - prd) * p._f[f];
-        concAct += act * act; concPred += prd * prd;
-      }
-      used++;
-    }
-    if (!used) return next;
-    for (const f of FEATURES) {
-      const step = Math.max(-0.05, Math.min(0.05, 0.5 * grad[f] / used));
-      next.w[f] = clamp(model.w[f] + step, BOUNDS.w);
-    }
-    // more concentrated on the top names than predicted -> fans pull harder toward stars
-    const ratio = Math.max(0.85, Math.min(1.15, Math.pow(concAct / concPred, 0.5)));
-    next.pull = clamp(model.pull * ratio, BOUNDS.pull);
-    for (const f of FEATURES) next.w[f] = Math.round(next.w[f] * 1e4) / 1e4;
-    next.pull = Math.round(next.pull * 1e3) / 1e3;
-    return next;
-  }
-
   /* is this a sane model? (also checked by the server) */
   function valid(m) {
     if (!m || typeof m !== 'object' || !m.w) return false;
     if (!FEATURES.every(f => typeof m.w[f] === 'number' && m.w[f] >= BOUNDS.w[0] && m.w[f] <= BOUNDS.w[1])) return false;
-    return ['center', 'steep', 'spread', 'pull'].every(k => typeof m[k] === 'number' && m[k] >= BOUNDS[k][0] && m[k] <= BOUNDS[k][1]);
+    return ['center', 'steep', 'spread', 'pull', 'team'].every(k => typeof m[k] === 'number' && m[k] >= BOUNDS[k][0] && m[k] <= BOUNDS[k][1]);
   }
 
   const api = { DEFAULT_MODEL, FEATURES, K, FANS, BOUNDS, create, blend, valid };

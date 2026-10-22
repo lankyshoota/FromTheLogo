@@ -1,5 +1,5 @@
 """
-FromTheLogo — how recognizable is each player? Wikipedia page views, last 12 months.
+FromTheLogo — how recognizable is each player? Wikipedia page views and reach.
 
 For every player in players.json:
   1. Find his English Wikipedia article. Wikidata links NBA.com player ids to articles
@@ -7,8 +7,14 @@ For every player in players.json:
      guessing between two Charles Joneses. Players Wikidata doesn't link get a Wikipedia
      search ("<name> basketball"); a result only counts if its title is his name and it's
      about basketball.
-  2. Get the article's page views (people, not bots) for the last 12 full months.
-  3. Write them into players.json as "fame" (views per year; 0 = no article found).
+  2. Get the article's monthly page views (people, not bots) back to July 2015, the start
+     of Wikipedia's data: one request per player.
+  3. Write into players.json:
+       fame    views in the last 12 full months (0 = no article found)
+       fame10  average views per year since July 2015, so legends aren't buried under
+               this season's hype (Dr. J vs. a rookie having a moment)
+       langs   how many language Wikipedias have an article on him (from Wikidata, or the
+               article's language links): timeless, worldwide fame
 
 Polite and resumable: a proper User-Agent, ~5 requests a second, retries with backoff on
 429/5xx, and every answer is cached in cache/fame/, so a rerun only fetches what's missing.
@@ -16,6 +22,8 @@ Views older than 30 days are refreshed on the next run. Takes ~15-20 minutes the
 
   python3 fetch_fame.py            # all players
   python3 fetch_fame.py --refresh  # refetch all views (e.g. monthly)
+
+Takes about the same time as before (one page-view request per player).
 
 build_players_bulk.py and fill_details.py keep the "fame" field when they rewrite
 players.json (they read it from cache/fame/).
@@ -79,26 +87,36 @@ def plain(name: str) -> str:
     return " ".join("".join(c if c.isalnum() else " " for c in s).split())
 
 
-def wikidata_titles() -> dict[int, str]:
-    """NBA.com player id -> English Wikipedia title, for every player Wikidata links."""
-    f = CACHE / "wikidata.json"
+def wikidata_titles() -> dict[int, tuple[str, int]]:
+    """NBA.com player id -> (English Wikipedia title, number of language Wikipedias), for every
+    player Wikidata links."""
+    f = CACHE / "wikidata2.json"
     if f.exists() and time.time() - f.stat().st_mtime < REFRESH_DAYS * 86400:
-        return {int(k): v for k, v in json.loads(f.read_text()).items()}
+        return {int(k): tuple(v) for k, v in json.loads(f.read_text()).items()}
     print("Matching NBA.com ids to Wikipedia articles (Wikidata)...")
     query = """
-      SELECT ?nba ?article WHERE {
-        ?item wdt:P3647 ?nba .
+      SELECT ?nba ?article ?links WHERE {
+        ?item wdt:P3647 ?nba ; wikibase:sitelinks ?links .
         ?article schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> .
       }"""
     data = get(WIKIDATA, {"query": query, "format": "json"})
     out = {}
     for b in (data or {}).get("results", {}).get("bindings", []):
         nba, url = b["nba"]["value"], b["article"]["value"]
+        links = int(b.get("links", {}).get("value", 0) or 0)
         if nba.isdigit():
-            out[int(nba)] = requests.utils.unquote(url.rsplit("/wiki/", 1)[1]).replace("_", " ")
+            out[int(nba)] = (requests.utils.unquote(url.rsplit("/wiki/", 1)[1]).replace("_", " "), links)
     f.write_text(json.dumps(out))
     print(f"  Wikidata links {len(out)} NBA.com ids to articles.")
     return out
+
+
+def language_count(title: str) -> int:
+    """How many language Wikipedias have this article (for players Wikidata didn't link)."""
+    data = get(WIKI_API, {"action": "query", "prop": "langlinks", "titles": title, "lllimit": "max",
+                          "format": "json", "formatversion": 2}) or {}
+    pages = data.get("query", {}).get("pages", [])
+    return 1 + (len(pages[0].get("langlinks", [])) if pages else 0)
 
 
 def search_title(pid: int, name: str) -> str | None:
@@ -119,13 +137,18 @@ def search_title(pid: int, name: str) -> str | None:
     return title
 
 
-def views_last_year(title: str) -> int:
+HISTORY_START = date(2015, 7, 1)    # Wikipedia's page-view data starts here
+
+
+def page_views(title: str) -> tuple[int, int]:
+    """(views in the last 12 full months, average views per year since July 2015). One request."""
     end = date.today().replace(day=1) - timedelta(days=1)                  # last day of last month
-    start = (end.replace(day=1) - timedelta(days=330)).replace(day=1)      # 12 full months
     url = (f"{PAGEVIEWS}/en.wikipedia/all-access/user/{quote(title.replace(' ', '_'), safe='')}"
-           f"/monthly/{start:%Y%m%d}00/{end:%Y%m%d}00")
-    data = get(url)
-    return sum(item.get("views", 0) for item in (data or {}).get("items", []))
+           f"/monthly/{HISTORY_START:%Y%m%d}00/{end:%Y%m%d}00")
+    items = sorted((get(url) or {}).get("items", []), key=lambda i: i.get("timestamp", ""))
+    last12 = sum(i.get("views", 0) for i in items[-12:])
+    years = max(1.0, ((end.year - HISTORY_START.year) * 12 + end.month - HISTORY_START.month + 1) / 12)
+    return last12, round(sum(i.get("views", 0) for i in items) / years)
 
 
 def main():
@@ -142,6 +165,8 @@ def main():
     for p in players:
         f = CACHE / f"views_{p['id']}.json"
         fresh = f.exists() and time.time() - f.stat().st_mtime < REFRESH_DAYS * 86400
+        if fresh:   # lookups from before 10-year views and language counts get redone
+            fresh = "views10" in json.loads(f.read_text())
         if args.refresh or not fresh:
             todo.append(p)
     print(f"{len(players)} players, {len(todo)} to look up.")
@@ -151,14 +176,17 @@ def main():
     try:
         for k, p in enumerate(todo, 1):
             pid = p["id"]
-            title, source = linked.get(pid), "wikidata"
+            title, langs = linked.get(pid, (None, 0))
+            source = "wikidata"
             if not title:
                 title, source = search_title(pid, p["n"]), "search"
-            views = views_last_year(title) if title else 0
+                langs = language_count(title) if title else 0
+            views, views10 = page_views(title) if title else (0, 0)
             source = source if title else "none"
             found[source] += 1
             (CACHE / f"views_{pid}.json").write_text(json.dumps(
-                {"title": title, "views": views, "source": source, "fetched": str(date.today())}))
+                {"title": title, "views": views, "views10": views10, "langs": langs,
+                 "source": source, "fetched": str(date.today())}))
             if k % 100 == 0 or k == len(todo):
                 print(f"  {k}/{len(todo)}  ({p['n']}: {views:,} views)  {(time.time() - t0) / 60:.0f} min")
     except KeyboardInterrupt:
@@ -168,12 +196,15 @@ def main():
 
 
 def merge(players):
-    """Write "fame" (views in the last 12 months) into players.json for everyone with a cached lookup."""
+    """Write fame / fame10 / langs into players.json for everyone with a cached lookup."""
     have = 0
     for p in players:
         f = CACHE / f"views_{p['id']}.json"
         if f.exists():
-            p["fame"] = int(json.loads(f.read_text()).get("views") or 0)
+            c = json.loads(f.read_text())
+            p["fame"] = int(c.get("views") or 0)
+            p["fame10"] = int(c.get("views10") or 0)
+            p["langs"] = int(c.get("langs") or 0)
             have += 1
     tmp = PLAYERS.with_name(PLAYERS.name + ".tmp")
     tmp.write_text(json.dumps(players, separators=(",", ":"), ensure_ascii=False))

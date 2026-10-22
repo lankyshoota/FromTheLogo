@@ -24,25 +24,35 @@ steps and check in before big changes.
   starter list, if it's missing). Picks are tracked by player id, since some names are shared
   (two Larry Johnsons); typing a shared name counts if any player with it fits.
 - `rarity.js` — rarity model (browser + Node). Recognition (0-1) = weighted mix of feature
-  scales: log Wikipedia views (fame, most weight), log playoff games, seasons, log awards (rings
-  until awards arrive), recency; each scaled 0-1 between its 1st and 99.9th percentile (log scales,
-  not percentiles, so a 10x more viewed player is clearly more recognizable). Simulated fans (4,000
-  per prompt, seeded by prompt id): each has a knowledge shift and a deep-cut appetite, recalls
-  each valid answer with sigmoid(steep * (recognition - center + shift)) (center = 90th
-  percentile), then picks among recalled with weight exp(pull * recognition) (pull flips negative
-  for deep-cut hunters). Share of picks = starting pick %. update(): one self-correcting step
-  from a settled day (softmax gradient on the weights, pull nudged by how bunched real picks
-  were; steps capped). Default model: views .6, playoffs .12, seasons .08, awards .12, recency .08,
-  center .9, steep 20, spread .1, pull 12.
+  scales, each scaled 0-1 between its 1st and 99.9th percentile (log scales, not percentiles):
+  views (Wikipedia, last 12 months), legacy (average yearly views since July 2015, so legends
+  aren't buried under this season's hype), langs (language Wikipedias with an article), playoff
+  games, seasons, awards (rings until awards arrive), recency. Missing legacy/langs data counts
+  as views. Team prompts (team, pair, team + decade): recognition is scaled down by how weakly the
+  player is tied to the team(s): tie = seasons there (/10), games there (/700), share of career
+  there, playoff games there (/40); recognition * (1 - team * (1 - tie)). So Jordan/Pippen/Rodman
+  are Bulls, Wade and Boozer barely are, and famous one-season stops score higher than lifers.
+  Simulated fans (4,000 per prompt, seeded by prompt id): each has a knowledge shift and a
+  deep-cut appetite (random^6, so few hunt deep cuts); recalls each answer with
+  sigmoid(steep * (recognition - center + shift)), picks among recalled with weight
+  exp(pull * recognition). update(): one self-correcting step from a settled day (softmax gradient
+  on the weights, pull nudged by how bunched real picks were; steps capped). Default model (v2):
+  views .5, legacy .2, langs .1, playoffs .12, seasons .08, awards .12, recency .08, center .97,
+  steep 30, spread .1, pull 6, team .3. Don't over-engineer: real picks correct the rest.
 - `fetch_fame.py` — run on Lanky's Mac. Wikidata (P3647 = NBA.com id) maps ids to English
-  Wikipedia articles; the rest via Wikipedia search (title must be the name, about basketball).
-  Sums 12 months of user page views per article and writes players.json "fame". Cached in
-  cache/fame/ (refreshes after 30 days, --refresh for all), ~5 req/s, proper User-Agent.
+  Wikipedia articles and gives each one's language count; the rest via Wikipedia search (title
+  must be the name, about basketball) plus its language links. One page-view request per player
+  (monthly since July 2015) gives fame (last 12 months) and fame10 (average per year). Cached in
+  cache/fame/ (refreshes after 30 days, --refresh for all; old entries without fame10 refetch),
+  ~5 req/s, proper User-Agent.
 - `test_rarity.js` — sanity test, also run by .github/workflows/rarity.yml on every push that
-  touches players.json/rarity.js/prompts.js. On prompts with 25+ answers: listed stars and
-  well-known role players must be Copper/Silver when among the 3 most recognizable answers and
-  never Refractor/1 of 1; the 3 least recognizable answers must be Refractor/1 of 1. Only warns
-  until players.json has Wikipedia views. Prints 3 example prompts.
+  touches players.json/rarity.js/prompts.js. Fails on: franchise faces not Copper on their team
+  prompt (Jordan/Bulls, Bird/Celtics, Duncan/Spurs, Dirk/Mavs); team legends not Silver (Pippen);
+  famous short stops not rarer than the lifer (Wade vs Pippen, Shaq vs Pierce on the Celtics, Nash
+  vs Fisher on the Lakers); superstars (top 50) under 2% on prompts with at most 10 superstars
+  (unless barely tied to the team); the 3 least known answers not under 2%. Warns (counts only)
+  on well-known role players below Silver as a top-3 answer or under 2% in the top 10 (mostly team
+  pairs; real picks settle these). Prints the top 8 of Bulls/Celtics/Lakers (EX1-3 to change).
 - `prompts.js` — prompt generator, loaded by index.html (also runs in Node for tests).
   Rule (Lanky): easy to answer, hard to answer well. Anyone should be able to name someone;
   the skill is going deep. So no stacked filters (college + team, country + team, 7-footer +
@@ -60,8 +70,8 @@ steps and check in before big changes.
   days; if fresh prompts run out it first allows a family to repeat, only then a recent prompt
   (never happens with the real data). Same data -> same packs for everyone. Prompt ids describe
   the prompt ("pair:LAL:MIA", "col:Duke") so stored packs can always be rebuilt. Champions
-  1970-2024 are a fixed list; later seasons come from the data. Unlimited mode picks randomly
-  with the same rules.
+  1970-2024 are a fixed list; later seasons come from the data. Test mode (?test=1) picks
+  randomly with the same rules.
 - `check_players.py` — sanity checks for players.json (team codes, impossible games, rings vs
   champions, misattributed old game-log rows) and, with ./cache, who's missing vs the old list.
 - `players.sample.json` — 324-player fallback (fake negative ids). Delete once players.json
@@ -75,7 +85,8 @@ steps and check in before big changes.
   wt (lbs), bd (birthdate "YYYY-MM-DD"), num ([[team, jersey], ...] from season rosters),
   from, to, gp, ppg, p (popularity 1-10), ad (1 = awards checked; only on players whose awards
   have been fetched, so award prompts can wait until nearly everyone has it), fame (Wikipedia
-  page views in the last 12 months, from fetch_fame.py; 0 = no article).
+  page views in the last 12 months, from fetch_fame.py; 0 = no article), fame10 (average views
+  per year since July 2015), langs (language Wikipedias with an article).
   Run on Lanky's own computer (NBA.com isn't reachable from the cloud session), then commit
   players.json.
 - `build_players_bulk.py` — the main builder now (per-player runs got blocked every ~25 players).
@@ -116,12 +127,13 @@ steps and check in before big changes.
   game gets the latest (get_fame_model); the first player after a day settles computes the next
   one from that day's picks (get_closed_day + rarity.js update) and proposes it
   (propose_fame_model: first valid one wins; must be the next day, within bounds, weights within
-  0.06 and pull within 16% of the previous, other settings unchanged).
+  0.06 and pull within 16% of the previous, other settings unchanged; an older model without
+  the v2 keys is treated as the v2 default).
 - **Settling:** once a date closes, the game re-scores that pack from get_pick_rates on the
   player's next visit and shows "Your <date> pack settled: X final (live score was Y)".
 - **One per user:** one pick per prompt per user and one submission per user per day (unique
   keys). A second device loads what the account already did today (get_my_day). Skipped
-  prompts (bricks) only reach the server when the pack is finished. Unlimited mode never saves.
+  prompts (bricks) only reach the server when the pack is finished. Test mode never saves.
 - **Accounts (Supabase Auth):** first visit shows a welcome sheet: "Play as guest" (anonymous
   sign-in) or "Log in / Sign up" (email + password, or Google). Everyone is a real auth user,
   so guest picks have a user id from the first pick.
@@ -142,9 +154,12 @@ steps and check in before big changes.
   retried on the next visit while the date is open.
 
 ## Game rules (decided — don't change without asking)
-- **8 prompts per day** (was 7; changed by Lanky), same for everyone. Plus "Rip a new pack"
-  unlimited mode. index.html uses PACK_SIZE from prompts.js; schema.sql allows prompt_idx 0-7,
-  totals up to 800 and 8-prompt packs.
+- **One pack a day. Core rule.** No unlimited mode in the public game. After the daily pack the
+  results screen counts down to the next one ("Next pack in 6h 12m", local midnight). The only
+  way to play more is the hidden test mode for Lanky: ?test=1 in the URL shows a "Test pack (not
+  saved)" tab with unlimited practice packs on simulated rates; test packs never save picks.
+- **8 prompts per pack** (was 7; changed by Lanky), same for everyone. index.html uses PACK_SIZE
+  from prompts.js; schema.sql allows prompt_idx 0-7, totals up to 800 and 8-prompt packs.
 - **One prompt at a time, 20-second clock** per prompt. Clock starts when the prompt appears.
   "Start pack" button so it doesn't start on page load. Deadline is saved so refreshing
   doesn't reset the clock.
