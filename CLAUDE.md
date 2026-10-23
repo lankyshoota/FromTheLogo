@@ -115,8 +115,22 @@ steps and check in before big changes.
   the 50-answer cold start are duplicated in pick_scores() — keep them in sync with index.html.
 
 ## Backend (Supabase project irtsjiluvpbxgxvteots, publishable key is in index.html)
-- **Daily pack:** every browser builds the same pack from the date; the first player of the
-  day stores it with get_or_create_pack and everyone else gets the stored one. No cron.
+- **Daily pack (server-only):** `make_packs.js` builds every daily pack from LAUNCH to a year
+  ahead with prompts.js + players.json and writes `supabase/packs.sql` (Lanky pastes it into
+  Supabase). get_or_create_pack(date) only returns the stored pack (p_prompts is ignored), so
+  browsers can't upload a fake pack; a date with no stored pack errors and the game plays
+  offline. Re-running packs.sql replaces packs for dates without picks only. Regenerate before
+  the schedule runs out (admin page shows it) or to bring new data (award prompts) into future
+  packs. The browser still builds the same pack itself for offline play.
+- **CAPTCHA:** Cloudflare Turnstile on guest sign-in (signInAnonymously, which also starts
+  every email signup) and email log-in (signInWithPassword), via Supabase Auth > Attack
+  Protection. TURNSTILE_KEY (public site key) in index.html; empty = no CAPTCHA. Widget is
+  invisible unless Cloudflare wants a click (then it shows inside the open sheet). Google
+  sign-in doesn't need it.
+- **Reports:** "Report a wrong answer" in the per-prompt reveal (daily, online): kind wrong
+  (counted but doesn't fit) or missing (fits but wasn't accepted), player (id if the name
+  matches), optional note. submit_report() -> reports table (locked; one per player/prompt/kind
+  per user, 30 a day max). Read on the admin page.
 - **Pack dates** use the player's local date. A date is open while it's that date somewhere
   on Earth: until 00:00 UTC two days later. After that its picks are final.
 - **Live score:** each daily pick is sent right away; submit_pick returns that player's count

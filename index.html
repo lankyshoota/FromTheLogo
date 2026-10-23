@@ -182,6 +182,13 @@ details.how p{margin:.6em 0 0;color:var(--muted);max-width:60ch}
 .results .fine{font-size:13px;color:var(--muted);margin:0}
 .curve .fine{margin:6px 0 0}
 .actions{display:flex;gap:8px;flex-wrap:wrap}
+.captcha:empty{display:none}
+.captcha{margin-top:12px;display:flex;justify-content:center}
+.rep{font-size:13px;margin-top:4px;padding:0}
+.radios{display:flex;flex-direction:column;gap:6px;margin:4px 0}
+.form .radios label{flex-direction:row;gap:8px;align-items:center;font:500 15px var(--body);text-transform:none;letter-spacing:0;color:var(--text)}
+.form .radios input{accent-color:var(--gold);width:16px;height:16px}
+.form textarea{resize:vertical}
 .hd-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
 .help{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);font:700 18px var(--body);cursor:pointer;line-height:1}
 .help:hover{border-color:var(--gold);color:var(--gold)}
@@ -206,7 +213,7 @@ dialog.sheet::backdrop{background:rgba(10,7,14,.75);backdrop-filter:blur(3px)}
 .sheet .fine{font-size:14px;margin:12px 0 0}
 .form{display:flex;flex-direction:column;gap:10px}
 .form label{font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;flex-direction:column;gap:5px}
-.form input{font:500 17px var(--body);color:var(--text);background:var(--binder);border:1px solid var(--line);border-radius:10px;padding:10px 12px;text-transform:none;letter-spacing:0}
+.form input:not([type=radio]),.form textarea{font:500 17px var(--body);color:var(--text);background:var(--binder);border:1px solid var(--line);border-radius:10px;padding:10px 12px;text-transform:none;letter-spacing:0}
 .btn.wide{width:100%;padding:11px 14px}
 .btn:disabled{opacity:.55;cursor:wait}
 .btn.google{display:flex;align-items:center;justify-content:center;gap:10px;text-transform:none;letter-spacing:.01em}
@@ -282,7 +289,7 @@ body[data-view="stats"] .g{display:none}
   <p class="foot" id="foot">Loading players…</p>
 </div>
 
-<dialog class="sheet" id="sheet"><div id="sheetBody"></div></dialog>
+<dialog class="sheet" id="sheet"><div id="sheetBody"></div><div id="captcha" class="captcha"></div></dialog>
 
 <script src="rarity.js"></script>
 <script src="prompts.js"></script>
@@ -657,6 +664,31 @@ const closeSheet = () => { const d = $('sheet'); if (d.open) d.close(); };
 const busy = (form, on) => form.querySelectorAll('button,input').forEach(el => el.disabled = on);
 const GOOGLE_ICON = `<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>`;
 
+/* Cloudflare Turnstile CAPTCHA on guest and email sign-ins (Supabase Auth checks the token when
+   Attack Protection > CAPTCHA is on). The site key is public. Empty = no CAPTCHA. Usually invisible;
+   it only shows a checkbox (inside the open sheet) when Cloudflare isn't sure. */
+const TURNSTILE_KEY = '';
+let turnstileJs = null;
+async function captchaToken(){
+  if (!TURNSTILE_KEY) return undefined;
+  turnstileJs ||= new Promise((ok, no) => {
+    const el = document.createElement('script');
+    el.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    el.onload = ok; el.onerror = () => { turnstileJs = null; no(new Error("Couldn't load the CAPTCHA (challenges.cloudflare.com). Check your connection.")); };
+    document.head.appendChild(el);
+  });
+  await turnstileJs;
+  return new Promise((ok, no) => {
+    const box = $('captcha'); box.innerHTML = '';
+    const done = (fn, v) => { try { turnstile.remove(id); } catch(e){} fn(v); };
+    const id = turnstile.render(box, { sitekey:TURNSTILE_KEY, appearance:'interaction-only', theme:'dark',
+      callback: t => done(ok, t),
+      'error-callback': () => done(no, new Error('The CAPTCHA check failed. Try again.')),
+      'timeout-callback': () => done(no, new Error('The CAPTCHA timed out. Try again.')) });
+  });
+}
+const guestSignIn = async () => sb.auth.signInAnonymously({ options:{ captchaToken: await captchaToken() } });
+
 /* first visit with no session: guest or account. Resolves once there's a user (or we're offline). */
 function sheetWelcome(){
   return new Promise(resolve => {
@@ -670,10 +702,11 @@ function sheetWelcome(){
       <p class="fine">Guests can save their results to an account any time.</p>`, { locked:true });
     $('wGuest').onclick = async () => {
       busy($('sheetBody'), true);
-      const { data, error } = await sb.auth.signInAnonymously().catch(e => ({ error:e }));
+      const { data, error } = await guestSignIn().catch(e => ({ error:e }));
       if (error) {
         user = null;
-        why(/anonymous/i.test(error.message || '') ? 'guest sign-in is turned off in Supabase (Authentication > Sign In / Providers > Allow anonymous sign-ins)' : `guest sign-in failed: ${errText(error)}`);
+        why(/anonymous/i.test(error.message || '') ? 'guest sign-in is turned off in Supabase (Authentication > Sign In / Providers > Allow anonymous sign-ins)'
+          : /captcha/i.test(error.message || '') ? `the CAPTCHA didn't pass: ${errText(error)}` : `guest sign-in failed: ${errText(error)}`);
         note("Couldn't start a guest session. Playing offline on simulated pick rates.", true);
       }
       else user = data.user;
@@ -721,7 +754,7 @@ async function doSignup(name, email, password){
   if (password.length < 6) throw new Error('Passwords need at least 6 characters.');
   if (!(await rpc('username_available', { p_name:name }))) throw new Error('That username is taken.');
   if (!user) {   // brand-new player: start as a guest so the account is the same user from the first pick
-    const { data, error } = await sb.auth.signInAnonymously();
+    const { data, error } = await guestSignIn();
     if (error) throw error;
     user = data.user;
   }
@@ -742,7 +775,7 @@ async function doSignup(name, email, password){
 }
 async function doLogin(email, password){
   await prepTransfer();
-  const { error } = await sb.auth.signInWithPassword({ email, password });
+  const { error } = await sb.auth.signInWithPassword({ email, password, options:{ captchaToken: await captchaToken() } });
   if (error) throw new Error(/confirm/i.test(error.message) ? 'Confirm your email first (check your inbox).'
     : /invalid/i.test(error.message) ? 'Wrong email or password.' : error.message);
   location.reload();
@@ -1164,6 +1197,42 @@ function curveHTML(b){
     ${n < 20 ? `<p class="fine">Early: ${n} player${n > 1 ? 's' : ''} so far. The curve fills in as more people finish.</p>` : ''}
   </figure>`;
 }
+/* "Report a wrong answer": a listed player who doesn't fit, or a player who fits but wasn't
+   accepted. Stored in Supabase (reports) for the admin page. */
+const canReport = () => state.mode === 'daily' && state.online && !!user;
+function sheetReport(i){
+  const pid = state.prompts[i], l = rateList(state, i), s = state.slots[i];
+  const names = [...new Set([s.status === 'pulled' ? s.pick : null, l[0]?.n, ...l.slice(-3).map(x => x.n)].filter(Boolean))];
+  openSheet(`<h2>Report a wrong answer</h2><p><strong>${esc(PROMPTS[pid].text)}</strong></p>
+    <form class="form" id="rForm" novalidate>
+      <div class="radios">
+        <label><input type="radio" name="kind" value="wrong" checked> A player counted here doesn't fit</label>
+        <label><input type="radio" name="kind" value="missing"> A player who fits wasn't accepted</label>
+      </div>
+      <label>Player<input name="player" list="rNames" maxlength="80" autocomplete="off" required></label>
+      <datalist id="rNames">${names.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+      <label>Note (optional)<textarea name="note" rows="3" maxlength="500" placeholder="e.g. he was traded before playing a game"></textarea></label>
+      <p class="err" id="rErr"></p>
+      <button class="btn primary wide" type="submit">Send report</button>
+      <button class="link" type="button" id="rCancel">Cancel</button>
+    </form>`);
+  $('rCancel').onclick = closeSheet;
+  $('rForm').onsubmit = async e => {
+    e.preventDefault();
+    const form = e.target, f = Object.fromEntries(new FormData(form)), name = f.player.trim();
+    if (!name) { $('rErr').textContent = 'Which player?'; return; }
+    busy(form, true);
+    const match = exactMatch(name)[0];
+    try {
+      await rpc('submit_report', { p_date:state.date, p_prompt_idx:i, p_kind:f.kind, p_player_id:match ? match.id : null,
+                                   p_player_name:match ? match.n : name, p_note:f.note || null });
+      openSheet(`<h2>Thanks</h2><p>Got it. We'll check <strong>${esc(match ? match.n : name)}</strong> on “${esc(PROMPTS[pid].text)}”.</p>
+        <button class="btn primary wide" id="rOk">Close</button>`);
+      $('rOk').onclick = closeSheet;
+    } catch(err){ $('rErr').textContent = /too many/i.test(err.message) ? "That's a lot of reports for one day. Thanks, we'll get to them." : "Couldn't send it. Try again."; busy(form, false); }
+  };
+}
+
 /* per-prompt reveal: my pick, the most picked, the 3 deepest valid answers, the deepest real pull */
 function revealHTML(i){
   const pid = state.prompts[i], l = rateList(state, i), s = state.slots[i], tag = rateTag(state);
@@ -1179,7 +1248,7 @@ function revealHTML(i){
       ${real ? `<dt>Deepest pull today</dt><dd>${esc(realName)} <i>${fmtPct(real.pct)} · ${real.picks} pick${real.picks > 1 ? 's' : ''}</i></dd>` : ''}
       <dt>Deepest answers</dt><dd>${deep3.map(d => `${esc(d.n)} <i>${fmtPct(d.pct)}</i>`).join(', ')}</dd>
     </dl>
-    <div class="fine">${l.length} players fit</div>
+    <div class="fine">${l.length} players fit${canReport() ? ` · <button class="link rep" type="button" data-report="${i}">Report a wrong answer</button>` : ''}</div>
   </li>`;
 }
 function renderResults(done){
@@ -1211,6 +1280,7 @@ function renderResults(done){
     catch { const r = document.createRange(); r.selectNodeContents($('shareTxt')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); e.target.textContent = 'Selected, copy it'; }
   });
   $('ripBtn2')?.addEventListener('click', rip);
+  document.querySelectorAll('[data-report]').forEach(b => b.addEventListener('click', () => sheetReport(+b.dataset.report)));
   armCountdown();
   $('saveBtn')?.addEventListener('click', () => sheetAuth('signup'));
   $('saveNo')?.addEventListener('click', () => { try { localStorage.setItem('fromthelogo:saveDismissed', state.date); } catch(e){} renderResults(true); });

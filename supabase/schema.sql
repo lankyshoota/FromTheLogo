@@ -88,6 +88,23 @@ create table if not exists fame_models (
   created_at timestamptz not null default now()
 );
 
+-- "Report a wrong answer" from the results screen: a player listed for a prompt who doesn't fit,
+-- or one who fits but wasn't accepted. Read on the admin page.
+create table if not exists reports (
+  id          bigint generated always as identity primary key,
+  pack_date   date not null references daily_packs (pack_date) on delete cascade,
+  prompt_idx  smallint not null check (prompt_idx between 0 and 7),
+  prompt_id   text not null,
+  kind        text not null check (kind in ('wrong', 'missing')),   -- wrong = listed but doesn't fit
+  player_id   bigint,                                               -- null if the name isn't in players.json
+  player_name text not null check (length(player_name) between 1 and 80),
+  note        text check (length(note) <= 500),
+  user_id     uuid references auth.users (id) on delete set null,
+  status      text not null default 'open' check (status in ('open', 'fixed', 'dismissed')),
+  created_at  timestamptz not null default now()
+);
+create unique index if not exists reports_once on reports (user_id, pack_date, prompt_idx, kind, lower(player_name));
+
 -- Lock the tables down: only the functions below get in.
 alter table daily_packs     enable row level security;
 alter table profiles        enable row level security;
@@ -95,11 +112,12 @@ alter table picks           enable row level security;
 alter table submissions     enable row level security;
 alter table transfer_tokens enable row level security;
 alter table fame_models     enable row level security;
+alter table reports         enable row level security;
 drop policy if exists "read packs"   on daily_packs;
 drop policy if exists "submit picks" on picks;
 drop policy if exists "read picks"   on picks;
 drop view if exists pick_rates;
-revoke all on daily_packs, profiles, picks, submissions, transfer_tokens, fame_models from anon, authenticated;
+revoke all on daily_packs, profiles, picks, submissions, transfer_tokens, fame_models, reports from anon, authenticated;
 
 -- ---------------------------------------------------------------- helpers
 
@@ -164,32 +182,21 @@ $$;
 
 -- ---------------------------------------------------------------- game
 
--- Returns the day's 8 prompts. The first caller of the day proposes the pack
--- (every browser builds the same one from the date); later callers get that one.
-create or replace function get_or_create_pack(p_date date, p_prompts jsonb)
+-- Returns the day's 8 prompts. Packs are made ahead of time by make_packs.js (supabase/packs.sql);
+-- the browser can't create or change one. p_prompts is ignored (kept so older pages still work).
+create or replace function get_or_create_pack(p_date date, p_prompts jsonb default null)
 returns jsonb
-language plpgsql security definer
+language plpgsql stable security definer
 set search_path = public
 as $$
 declare
   existing jsonb;
 begin
   select prompts into existing from daily_packs where pack_date = p_date;
-  if existing is not null then
-    return existing;
+  if existing is null then
+    raise exception 'no pack scheduled for % (run supabase/packs.sql)', p_date;
   end if;
-  if not pack_date_open(p_date) then
-    raise exception 'pack date % is not open', p_date;
-  end if;
-  if jsonb_typeof(p_prompts) <> 'array' or jsonb_array_length(p_prompts) <> 8
-     or exists (select 1 from jsonb_array_elements(p_prompts) e
-                where coalesce(jsonb_typeof(e -> 'id'), '') <> 'string' or length(e ->> 'id') > 64
-                   or length(coalesce(e ->> 'text', '')) > 200) then
-    raise exception 'a pack is 8 prompts with an id and text';
-  end if;
-  insert into daily_packs (pack_date, prompts) values (p_date, p_prompts)
-  on conflict (pack_date) do nothing;
-  return (select prompts from daily_packs where pack_date = p_date);
+  return existing;
 end;
 $$;
 
@@ -482,6 +489,33 @@ $$;
 
 -- ---------------------------------------------------------------- permissions
 
+-- ---------------------------------------------------------------- reports
+
+-- One report per player per prompt per user (repeats are ignored), at most 30 a day per user.
+create or replace function submit_report(p_date date, p_prompt_idx smallint, p_kind text,
+                                         p_player_id bigint, p_player_name text, p_note text)
+returns void
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  me uuid := require_user();
+  pid text;
+begin
+  select prompts -> p_prompt_idx ->> 'id' into pid from daily_packs where pack_date = p_date;
+  if pid is null then
+    raise exception 'no such prompt';
+  end if;
+  if (select count(*) from reports where user_id = me and created_at > now() - interval '1 day') >= 30 then
+    raise exception 'too many reports today';
+  end if;
+  insert into reports (pack_date, prompt_idx, prompt_id, kind, player_id, player_name, note, user_id)
+  values (p_date, p_prompt_idx, pid, p_kind, p_player_id, left(trim(p_player_name), 80),
+          nullif(left(trim(coalesce(p_note, '')), 500), ''), me)
+  on conflict do nothing;
+end;
+$$;
+
 -- ---------------------------------------------------------------- results screen
 
 -- How a finished day looks for everyone, for the results screen (daily pack only):
@@ -548,7 +582,7 @@ begin
     'username_available(text)', 'set_username(text)', 'get_profile()',
     'start_transfer()', 'claim_transfer(uuid)', 'get_my_stats(date)',
     'get_fame_model()', 'get_closed_day(date)', 'propose_fame_model(date, jsonb)',
-    'get_day_board(date)']
+    'get_day_board(date)', 'submit_report(date, smallint, text, bigint, text, text)']
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f);
   end loop;
@@ -568,3 +602,4 @@ grant execute on function get_fame_model()                         to anon, auth
 grant execute on function get_closed_day(date)                     to anon, authenticated;
 grant execute on function propose_fame_model(date, jsonb)          to authenticated;
 grant execute on function get_day_board(date)                     to authenticated;
+grant execute on function submit_report(date, smallint, text, bigint, text, text) to authenticated;
