@@ -3,8 +3,8 @@ FromTheLogo — slowly fetch what the bulk endpoints can't give us:
 
   1. awards (All-Star, MVP, Finals MVP, All-NBA, All-Defensive, All-Rookie,
      DPOY, ROY, 6MOY, Player of the Month, rings), likeliest winners first
-  2. birthdates (and NBA.com's official draft/college/position info)
-  3. jersey numbers for every team-season (team rosters)
+  2. jersey numbers for every team-season (team rosters)
+  (birthdates are skipped unless you ask for them: --only awards,birthdates,jerseys)
 
 It's meant to run in the background over a few nights:
   - one request every ~10-14 s, plus a 5-minute rest every 40 requests,
@@ -61,8 +61,9 @@ def merge():
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--only", default="awards,birthdates,jerseys",
-                    help="comma-separated: awards, birthdates, jerseys (default: all, in that order)")
+    ap.add_argument("--only", default="awards,jerseys",
+                    help="comma-separated: awards, birthdates, jerseys (default: awards,jerseys, in that order; "
+                         "birthdates only when listed)")
     ap.add_argument("--delay", type=float, default=DELAY, help=f"seconds between requests (default {DELAY:g})")
     args = ap.parse_args()
     only = {x.strip() for x in args.only.split(",")}
@@ -90,7 +91,7 @@ def main():
     todo = [t for t in todo if bulk.cached(t[0]) is None and not pol.gave_up(t[0])]
     left = {k: sum(1 for t in todo if t[2] == k) for k in ("awards", "birthdates", "jerseys") if k in only}
     if not todo:
-        print("Nothing left to fetch: awards, birthdates and jerseys are all cached.")
+        print(f"Nothing left to fetch: {', '.join(sorted(only))} all cached.")
         merge()
         return
 
@@ -123,7 +124,7 @@ def main():
         sys.exit("\nStopped. players.json is up to date with everything fetched; run again to continue.")
     merge()
     gave_up = [t[0] for t in todo if pol.gave_up(t[0])]
-    print(f"\nDone in {(time.time() - t0) / 3600:.1f} h. players.json has all the awards, birthdates and jerseys "
+    print(f"\nDone in {(time.time() - t0) / 3600:.1f} h. players.json has all the {', '.join(sorted(only))} "
           f"NBA.com gave us.")
     if gave_up:
         print(f"{len(gave_up)} items came back empty {bulk.MAX_EMPTY} times and won't be asked again "

@@ -46,11 +46,11 @@ steps and check in before big changes.
   cache/fame/ (refreshes after 30 days, --refresh for all; old entries without fame10 refetch),
   ~5 req/s, proper User-Agent.
 - `test_rarity.js` — sanity test, also run by .github/workflows/rarity.yml on every push that
-  touches players.json/rarity.js/prompts.js. Fails on: franchise faces not Copper on their team
-  prompt (Jordan/Bulls, Bird/Celtics, Duncan/Spurs, Dirk/Mavs); team legends not Silver (Pippen);
+  touches players.json/rarity.js/prompts.js. Fails on: franchise faces not the clear #1 on their
+  team prompt (Silver+ and 1.25x the #2; Jordan/Bulls, Bird/Celtics, Duncan/Spurs, Dirk/Mavs); team legends not Silver (Pippen);
   famous short stops not rarer than the lifer (Wade vs Pippen, Shaq vs Pierce on the Celtics, Nash
   vs Fisher on the Lakers); superstars (top 50) under 2% on prompts with at most 10 superstars
-  (unless barely tied to the team); the 3 least known answers not under 2%. Warns (counts only)
+  (unless barely tied to the team: tie under 0.35, e.g. Pau on the Spurs); the 3 least known answers not under 2%. Warns (counts only)
   on well-known role players below Silver as a top-3 answer or under 2% in the top 10 (mostly team
   pairs; real picks settle these). Prints the top 8 of Bulls/Celtics/Lakers (EX1-3 to change).
 - `prompts.js` — prompt generator, loaded by index.html (also runs in Node for tests).
@@ -98,7 +98,8 @@ steps and check in before big changes.
   `Polite` class: paced, cached requests that pause on blocks (30s, 2m, 15m, 30m, then hourly) and
   never quit; empty answers are logged in cache/empty_answers.json and skipped after 3.
 - `fill_details.py` — slow background filler for what bulk can't get: awards (likeliest winners
-  first), birthdates/info, team rosters for jersey history. ~10-14 s per request + 5 min rest per
+  first), then team rosters for jersey history. Birthdates/info are skipped by default
+  (Lanky doesn't need them; `--only awards,birthdates,jerseys` brings them back). ~10-14 s per request + 5 min rest per
   40; merges into players.json every 25 items and on Ctrl+C; resumable. Takes a few nights.
 - `fill_missing.py` — for the old per-player builder: run after build_players.py. ~4% of players get an empty answer from
   PlayerCareerStats every time (e.g. 1629152, 1824, 202079). Finds everyone in the cached

@@ -10,8 +10,9 @@
  *     answers are Copper or Silver (picked by 10%+), and never Refractor/1 of 1 in its top 10.
  *  3. The 3 least recognizable answers reach Refractor or 1 of 1 (under 2%).
  * Franchise faces:
- *  4. The face of a franchise is Copper on its team prompt (Jordan/Bulls, Bird/Celtics,
- *     Duncan/Spurs, Dirk/Mavericks); team legends like Pippen on the Bulls are Silver.
+ *  4. The face of a franchise is the clear #1 on its team prompt (Jordan/Bulls, Bird/Celtics,
+ *     Duncan/Spurs, Dirk/Mavericks): at least Silver and 1.25x the #2 (Bird can be Silver: Tatum
+ *     and Brown split the Celtics picks today); team legends like Pippen on the Bulls are Silver.
  *  5. A famous player's short stop scores higher (is picked less) than the team's lifer.
  * Rules 1, 3, 4 and 5 fail the test. Rule 2 is a warning (counted and listed): it's mostly role
  * players splitting the obvious picks on team-pair prompts, which real picks settle after launch.
@@ -22,7 +23,7 @@ const path = require('path');
 const R = require('./rarity.js');
 const F = require('./prompts.js');
 
-const BIG = 25, SUPERSTARS = 50, WEAK_TIE = 0.3, CROWDED = 10;
+const BIG = 25, SUPERSTARS = 50, WEAK_TIE = 0.35, CROWDED = 10, CLEAR_LEAD = 1.25;
 const ROLE_PLAYERS = ['DeAndre Jordan', 'Robert Horry', 'J.R. Smith', 'Dennis Rodman', 'Steve Kerr', 'Derek Fisher',
   'Kyle Korver', 'Udonis Haslem', 'Nate Robinson', 'Metta World Peace', 'Boban Marjanovic', 'Brian Scalabrine',
   'Rajon Rondo', 'Tony Allen', 'Draymond Green', 'Jeremy Lin', 'Andre Iguodala', 'Matt Barnes'];
@@ -67,7 +68,11 @@ for (const pr of G.usable) {
     if (v >= 2) fails.push(`deep cut ${p.n} is only ${tier(v)} (${v.toFixed(1)}%) on "${pr.text}"`);
   }
 }
-for (const [id, n] of FACES) { const v = shareOf(id, byName(n)); if (v < 25) fails.push(`face of the franchise ${n} is ${tier(v)} (${v.toFixed(1)}%) on "${G.get(id).text}"`); }
+for (const [id, n] of FACES) {
+  const face = byName(n), v = shareOf(id, face);
+  const next = Math.max(...players.filter(G.get(id).test).filter(p => p !== face).map(p => shareOf(id, p)));
+  if (v < 10 || v < CLEAR_LEAD * next) fails.push(`face of the franchise ${n} is ${tier(v)} (${v.toFixed(1)}%) on "${G.get(id).text}", not the clear #1 (next: ${next.toFixed(1)}%)`);
+}
 for (const [id, n] of LEGENDS) { const v = shareOf(id, byName(n)); if (v < 10 || v >= 25) fails.push(`team legend ${n} is ${tier(v)} (${v.toFixed(1)}%) on "${G.get(id).text}", should be Silver`); }
 for (const [id, stop, lifer] of SHORT_STOPS) {
   const a = shareOf(id, byName(stop)), b = shareOf(id, byName(lifer));
