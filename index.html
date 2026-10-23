@@ -3,7 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>FromTheLogo</title>
+<title>From the Logo · daily NBA deep cuts</title>
+<meta name="description" content="The daily NBA deep-cut game. Name a player who fits each prompt; the fewer people who pick him, the rarer the card and the deeper your shot.">
+<!-- link previews (iMessage, Twitter/X, Discord, Slack...). Images need the full URL. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="From the Logo">
+<meta property="og:title" content="From the Logo: the daily NBA deep-cut game">
+<meta property="og:description" content="Name a player who fits. The fewer people who pick him, the rarer the card. 8 prompts, 20 seconds each, one pack a day.">
+<meta property="og:url" content="https://lankyshoota.github.io/FromTheLogo/">
+<meta property="og:image" content="https://lankyshoota.github.io/FromTheLogo/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="From the Logo: six trading cards from Copper (picked by 25%+, 10 points) to 1 of 1 (under 0.5%, 100 points)">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="From the Logo: the daily NBA deep-cut game">
+<meta name="twitter:description" content="Name a player who fits. The fewer people who pick him, the rarer the card. One pack a day.">
+<meta name="twitter:image" content="https://lankyshoota.github.io/FromTheLogo/og.png">
+<!-- home screen app -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#19141f">
+<link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FromTheLogo">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Barlow+Semi+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
@@ -34,7 +58,7 @@ body{
     var(--binder);
   min-height:100%;
 }
-.wrap{max-width:640px;margin:0 auto;padding-block:20px 48px;
+.wrap{max-width:640px;margin:0 auto;padding-top:max(20px, env(safe-area-inset-top,0px));padding-bottom:max(48px, env(safe-area-inset-bottom,0px));
   padding-left:max(16px, env(safe-area-inset-left,0px));
   padding-right:max(16px, env(safe-area-inset-right,0px));
   display:flex;flex-direction:column;gap:18px}

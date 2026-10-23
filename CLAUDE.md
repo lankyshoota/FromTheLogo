@@ -23,6 +23,12 @@ steps and check in before big changes.
   Loads `players.json` at startup (falls back to `players.sample.json`, the old hand-typed
   starter list, if it's missing). Picks are tracked by player id, since some names are shared
   (two Larry Johnsons); typing a shared name counts if any player with it fits.
+- **Link previews + home screen:** index.html has Open Graph / Twitter tags pointing at
+  https://lankyshoota.github.io/FromTheLogo/og.png (absolute URL; change og:url/og:image if the
+  site moves to a domain). `og.png` (1200x630: wordmark + the six tier cards), `icon-512/192/180/32.png`
+  (FTL in a gold center-court ring; maskable-safe) and `manifest.webmanifest` (standalone,
+  start_url ./). Rendered from the game's own CSS with Playwright (cloud session); no service
+  worker on purpose (Chromium installs without one, and a cache could serve a stale game).
 - `rarity.js` — rarity model (browser + Node). Recognition (0-1) = weighted mix of feature
   scales, each scaled 0-1 between its 1st and 99.9th percentile (log scales, not percentiles):
   views (Wikipedia, last 12 months), legacy (average yearly views since July 2015, so legends
