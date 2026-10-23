@@ -110,6 +110,13 @@ create table if not exists reports (
 );
 create unique index if not exists reports_once on reports (user_id, pack_date, prompt_idx, kind, lower(player_name));
 
+-- Who can open admin.html. Add yourself once (see CLAUDE.md):
+--   insert into admins (user_id) select id from auth.users where email = 'you@example.com';
+create table if not exists admins (
+  user_id    uuid primary key references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
 -- Lock the tables down: only the functions below get in.
 alter table daily_packs     enable row level security;
 alter table profiles        enable row level security;
@@ -118,23 +125,47 @@ alter table submissions     enable row level security;
 alter table transfer_tokens enable row level security;
 alter table fame_models     enable row level security;
 alter table reports         enable row level security;
+alter table admins          enable row level security;
 drop policy if exists "read packs"   on daily_packs;
 drop policy if exists "submit picks" on picks;
 drop policy if exists "read picks"   on picks;
 drop view if exists pick_rates;
-revoke all on daily_packs, profiles, picks, submissions, transfer_tokens, fame_models, reports from anon, authenticated;
+revoke all on daily_packs, profiles, picks, submissions, transfer_tokens, fame_models, reports, admins from anon, authenticated;
 
 -- ---------------------------------------------------------------- helpers
 
--- A pack date is open while it's that date somewhere on Earth (UTC-12 to UTC+14),
--- i.e. from UTC date-1 through UTC date+1. After that its picks are final.
+-- One global day for everyone: the date in Eastern time (America/New_York, daylight saving
+-- included). The new pack appears at midnight ET everywhere.
+create or replace function ftl_today()
+returns date
+language sql stable
+set search_path = public
+as $$
+  select (now() at time zone 'America/New_York')::date;
+$$;
+
+-- A pack date is open on its own Eastern day, plus 5 minutes after midnight so a pack that was
+-- in progress at midnight can finish (keep GRACE in index.html the same). After that it's final.
 create or replace function pack_date_open(p_date date)
 returns boolean
 language sql stable
 set search_path = public
 as $$
-  select p_date between (now() at time zone 'utc')::date - 1
-                    and (now() at time zone 'utc')::date + 1;
+  select p_date = ftl_today()
+      or (p_date = ftl_today() - 1 and (now() at time zone 'America/New_York')::time < time '00:05');
+$$;
+
+-- What day it is for the game, by the server's clock (the browser's clock can be wrong).
+create or replace function get_today()
+returns jsonb
+language sql stable security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'date',       ftl_today(),
+    'now',        now(),
+    'next_reset', (ftl_today() + 1)::timestamp at time zone 'America/New_York',
+    'tz',         'America/New_York');
 $$;
 
 -- The signed-in user, or an error. Guests count (they're anonymous users).
@@ -197,6 +228,9 @@ as $$
 declare
   existing jsonb;
 begin
+  if p_date > ftl_today() then
+    raise exception 'the pack for % is not out yet', p_date;   -- no peeking at future packs
+  end if;
   select prompts into existing from daily_packs where pack_date = p_date;
   if existing is null then
     raise exception 'no pack scheduled for % (run supabase/packs.sql)', p_date;
@@ -375,7 +409,8 @@ $$;
 
 -- ---------------------------------------------------------------- stats
 
--- Everything the Stats page shows. p_today is the player's local date (for streaks).
+-- Everything the Stats page shows. Streaks run on Eastern dates (ftl_today); p_today is ignored
+-- (kept so older pages still work).
 create or replace function get_my_stats(p_today date)
 returns jsonb
 language sql stable security definer
@@ -408,7 +443,7 @@ as $$
   select jsonb_build_object(
     'username',       (select username from profiles where id = (select id from me)),
     'packs',          (select count(*) from packs),
-    'current_streak', coalesce((select len from runs where last_day >= p_today - 1 order by last_day desc limit 1), 0),
+    'current_streak', coalesce((select len from runs where last_day >= ftl_today() - 1 order by last_day desc limit 1), 0),
     'best_streak',    coalesce((select max(len) from runs), 0),
     'avg_score',      (select round(avg(score)) from packs),
     'best_score',     (select max(score) from packs),
@@ -589,19 +624,178 @@ as $$
     'final',   not pack_date_open(p_date));
 $$;
 
+-- ---------------------------------------------------------------- admin (admin.html)
+
+-- True only for a signed-in account listed in admins (never a guest).
+create or replace function is_admin()
+returns boolean
+language sql stable security definer
+set search_path = public
+as $$
+  select exists (select 1 from admins a join auth.users u on u.id = a.user_id
+                 where a.user_id = auth.uid() and not coalesce(u.is_anonymous, false));
+$$;
+
+-- Everything admin.html shows, for the last p_days Eastern days (today included).
+-- Scores are recomputed from picks with the same blend and tiers as pick_scores (keep in sync).
+create or replace function get_admin_dashboard(p_days int default 30)
+returns jsonb
+language plpgsql stable security definer
+set search_path = public
+as $$
+declare
+  d_to   date := ftl_today();
+  d_from date := ftl_today() - greatest(1, least(coalesce(p_days, 30), 180)) + 1;
+  out    jsonb;
+begin
+  if not is_admin() then
+    raise exception 'not allowed';
+  end if;
+  with
+  played as (   -- who played which day: any pick or a finished pack
+    select pack_date, user_id from picks where user_id is not null
+    union select pack_date, user_id from submissions
+  ),
+  first_day as (select user_id, min(pack_date) as d from played group by user_id),
+  signup as (   -- when a guest became an account (first email/Google identity), in ET
+    select u.id, (coalesce((select min(i.created_at) from auth.identities i where i.user_id = u.id), u.created_at)
+                  at time zone 'America/New_York')::date as d
+    from auth.users u where not coalesce(u.is_anonymous, false)
+  ),
+  counts as (
+    select pack_date, prompt_idx, player_id, count(*)::int as same,
+           sum(count(*)) over (partition by pack_date, prompt_idx)::int as total
+    from picks where pack_date between d_from and d_to group by 1, 2, 3
+  ),
+  scored as (
+    select p.pack_date, p.user_id, p.prompt_idx, p.player_id,
+           (100.0 * (c.same + p.sim_pct) / (c.total + 100)) as pct
+    from picks p join counts c using (pack_date, prompt_idx, player_id)
+  ),
+  pts as (
+    select *, case when pct >= 25 then 10 when pct >= 10 then 25 when pct >= 5 then 40
+                   when pct >= 2 then 60 when pct >= 0.5 then 80 else 100 end as pts
+    from scored
+  ),
+  scores as (   -- finished packs only
+    select s.pack_date, s.user_id, s.mode, coalesce(sum(x.pts), 0)::int as score
+    from submissions s left join pts x on x.pack_date = s.pack_date and x.user_id = s.user_id
+    where s.pack_date between d_from and d_to
+    group by 1, 2, 3
+  ),
+  days as (select generate_series(d_from, d_to, interval '1 day')::date as d),
+  -- everything per day is counted once, then joined onto the list of days
+  by_played as (select pack_date as d, count(distinct user_id) as players from played group by 1),
+  by_new as (select d, count(*) as new_players from first_day group by 1),
+  by_signup as (select d, count(*) as signups from signup group by 1),
+  by_finish as (select pack_date as d, count(*) as finished, count(*) filter (where mode = 'hard') as finished_hard
+                from submissions where pack_date between d_from and d_to group by 1),
+  by_return as (
+    select f.d, count(distinct f.user_id) filter (where x.pack_date = f.d + 1) as d1,
+                count(distinct f.user_id) filter (where x.pack_date = f.d + 7) as d7
+    from first_day f join played x on x.user_id = f.user_id and x.pack_date in (f.d + 1, f.d + 7)
+    group by 1
+  ),
+  by_score as (
+    select pack_date as d, round(avg(score), 1) as avg_score,
+           round(avg(score) filter (where mode = 'easy'), 1) as avg_easy,
+           round(avg(score) filter (where mode = 'hard'), 1) as avg_hard,
+           percentile_disc(0.5) within group (order by score) as median
+    from scores group by 1
+  ),
+  by_bin as (select pack_date as d, least(score / 50, 15) as bin, count(*)::int as n from scores group by 1, 2),
+  daily as (
+    select days.d,
+      coalesce(pl.players, 0) as players, coalesce(nw.new_players, 0) as new_players,
+      coalesce(su.signups, 0) as signups, coalesce(fi.finished, 0) as finished,
+      coalesce(fi.finished_hard, 0) as finished_hard,
+      case when days.d + 1 <= d_to then coalesce(rt.d1, 0) end as d1_back,
+      case when days.d + 7 <= d_to then coalesce(rt.d7, 0) end as d7_back,
+      sc.avg_score, sc.avg_easy, sc.avg_hard, sc.median,
+      (select jsonb_agg(coalesce(bb.n, 0) order by b) from generate_series(0, 15) b
+         left join by_bin bb on bb.d = days.d and bb.bin = b) as hist
+    from days
+    left join by_played pl on pl.d = days.d
+    left join by_new nw on nw.d = days.d
+    left join by_signup su on su.d = days.d
+    left join by_finish fi on fi.d = days.d
+    left join by_return rt on rt.d = days.d
+    left join by_score sc on sc.d = days.d
+  ),
+  prompt_rows as (   -- every prompt in range: answers, bricks, spread of points, top answer
+    select dp.pack_date, (e.idx - 1)::int as prompt_idx, e.p ->> 'id' as prompt_id, e.p ->> 'text' as text,
+      (select count(*) from submissions s where s.pack_date = dp.pack_date) as finishers,
+      (select count(*) from submissions s where s.pack_date = dp.pack_date
+         and not exists (select 1 from picks k where k.pack_date = s.pack_date and k.user_id = s.user_id
+                                                and k.prompt_idx = e.idx - 1)) as bricks,
+      (select coalesce(stddev_pop(coalesce(x.pts, 0)), 0) from submissions s
+         left join pts x on x.pack_date = s.pack_date and x.user_id = s.user_id and x.prompt_idx = e.idx - 1
+         where s.pack_date = dp.pack_date) as spread,
+      (select jsonb_build_object('player_id', player_id, 'picks', same, 'total', total, 'share', round(100.0 * same / total, 1))
+         from counts c where c.pack_date = dp.pack_date and c.prompt_idx = e.idx - 1
+         order by same desc, player_id limit 1) as top
+    from daily_packs dp, jsonb_array_elements(dp.prompts) with ordinality e(p, idx)
+    where dp.pack_date between d_from and d_to
+  ),
+  report_groups as (
+    select r.pack_date, r.prompt_idx, r.prompt_id,
+           (select prompts -> r.prompt_idx ->> 'text' from daily_packs where pack_date = r.pack_date) as text,
+           r.kind, r.player_id, min(r.player_name) as player_name, count(*)::int as n,
+           (array_agg(r.note order by r.created_at) filter (where r.note is not null))[1:5] as notes,
+           array_agg(r.id) as ids, min(r.created_at) as first_at
+    from reports r where r.status = 'open'
+    group by r.pack_date, r.prompt_idx, r.prompt_id, r.kind, r.player_id, lower(r.player_name)
+  )
+  select jsonb_build_object(
+    'today',     d_to,
+    'from',      d_from,
+    'packs',     jsonb_build_object('last_date', (select max(pack_date) from daily_packs),
+                                    'days_left', (select max(pack_date) from daily_packs) - d_to),
+    'totals',    jsonb_build_object('users',    (select count(*) from auth.users),
+                                    'accounts', (select count(*) from auth.users where not coalesce(is_anonymous, false)),
+                                    'players',  (select count(*) from first_day)),
+    'daily',     (select jsonb_agg(to_jsonb(daily) order by d) from daily),
+    'prompts',   coalesce((select jsonb_agg(to_jsonb(prompt_rows) order by pack_date, prompt_idx) from prompt_rows), '[]'::jsonb),
+    'reports',   coalesce((select jsonb_agg(to_jsonb(report_groups) order by n desc, first_at) from report_groups), '[]'::jsonb)
+  ) into out;
+  return out;
+end;
+$$;
+
+-- Mark reports fixed or dismissed from the admin page. p_ids: JSON array of report ids.
+drop function if exists set_report_status(bigint[], text);
+create or replace function set_report_status(p_ids jsonb, p_status text)
+returns int
+language plpgsql security definer
+set search_path = public
+as $$
+declare n int;
+begin
+  if not is_admin() then
+    raise exception 'not allowed';
+  end if;
+  if p_status not in ('open', 'fixed', 'dismissed') then
+    raise exception 'bad status';
+  end if;
+  update reports set status = p_status where id in (select (jsonb_array_elements_text(p_ids))::bigint);
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+
 -- Supabase grants new functions to anon by default, so revoke everything, then
 -- grant only what the game calls. Guests and accounts are both "authenticated".
 do $$
 declare f text;
 begin
   foreach f in array array[
-    'pack_date_open(date)', 'require_user()', 'is_guest()', 'pick_scores(uuid)',
+    'pack_date_open(date)', 'ftl_today()', 'get_today()', 'require_user()', 'is_guest()', 'pick_scores(uuid)',
     'get_or_create_pack(date, jsonb)', 'submit_pick(date, smallint, bigint, real)',
     'get_pick_rates(date)', 'submit_score(date, smallint, text)', 'get_my_day(date)',
     'username_available(text)', 'set_username(text)', 'get_profile()',
     'start_transfer()', 'claim_transfer(uuid)', 'get_my_stats(date)',
     'get_fame_model()', 'get_closed_day(date)', 'propose_fame_model(date, jsonb)',
-    'get_day_board(date, text)', 'submit_report(date, smallint, text, bigint, text, text)']
+    'get_day_board(date, text)', 'is_admin()', 'get_admin_dashboard(int)', 'set_report_status(jsonb, text)', 'submit_report(date, smallint, text, bigint, text, text)']
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f);
   end loop;
@@ -622,3 +816,7 @@ grant execute on function get_closed_day(date)                     to anon, auth
 grant execute on function propose_fame_model(date, jsonb)          to authenticated;
 grant execute on function get_day_board(date, text)               to authenticated;
 grant execute on function submit_report(date, smallint, text, bigint, text, text) to authenticated;
+grant execute on function get_today()                            to anon, authenticated;
+grant execute on function is_admin()                               to authenticated;
+grant execute on function get_admin_dashboard(int)                 to authenticated;
+grant execute on function set_report_status(jsonb, text)           to authenticated;

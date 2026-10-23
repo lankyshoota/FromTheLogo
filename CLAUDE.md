@@ -29,6 +29,17 @@ steps and check in before big changes.
   (FTL in a gold center-court ring; maskable-safe) and `manifest.webmanifest` (standalone,
   start_url ./). Rendered from the game's own CSS with Playwright (cloud session); no service
   worker on purpose (Chromium installs without one, and a cache could serve a stale game).
+- `admin.html` — private dashboard (noindex). Uses the game's Supabase session (log in on the
+  game first). Server-side gate: get_admin_dashboard() and set_report_status() raise unless
+  is_admin() (a non-guest account in the admins table). Shows: packs-left warning (< 60 days,
+  red < 14), tiles (players/finished today, new players, signups, D1/D7 retention, avg score,
+  packs scheduled, open reports), daily players (returning vs new columns), average score
+  (easy vs hard lines), score distribution heatmap (share of each day's finishers per 50 pts),
+  by-day table (also the charts' table view), most picked answers, highest brick rate, lowest
+  score spread (stddev of points on the prompt, 5+ finishers), open reports with Fixed/Dismiss.
+  7/14/30/90-day range. All dates are ET. Signup date = first email/Google identity.
+- **Analytics:** GoatCounter (no cookies, no banner): set GOATCOUNTER in index.html to the site
+  code once Lanky has signed up; empty = off. Test mode and localhost don't count.
 - `rarity.js` — rarity model (browser + Node). Recognition (0-1) = weighted mix of feature
   scales, each scaled 0-1 between its 1st and 99.9th percentile (log scales, not percentiles):
   views (Wikipedia, last 12 months), legacy (average yearly views since July 2015, so legends
@@ -137,8 +148,16 @@ steps and check in before big changes.
   (counted but doesn't fit) or missing (fits but wasn't accepted), player (id if the name
   matches), optional note. submit_report() -> reports table (locked; one per player/prompt/kind
   per user, 30 a day max). Read on the admin page.
-- **Pack dates** use the player's local date. A date is open while it's that date somewhere
-  on Earth: until 00:00 UTC two days later. After that its picks are final.
+- **One global day, Eastern time (Lanky).** Pack date = today in America/New_York (DST
+  included), decided by the server: ftl_today() in SQL; the game syncs its clock from get_today()
+  at startup (clockSkew) so a wrong device clock can't pick the date; device clock only when
+  offline. Everyone gets the new pack at midnight ET. A date is open on its own ET day plus a
+  5-minute grace after midnight (pack_date_open; GRACE in index.html) so a pack in progress can
+  finish; after that its picks are final and it settles. get_or_create_pack refuses future dates
+  (no peeking). The results countdown counts to midnight ET; at midnight the page reloads into
+  the new pack by itself unless you're mid-pack. Streaks (get_my_stats) use ftl_today().
+  packs.sql rows are ET calendar dates. Packs are still predictable by anyone who runs
+  prompts.js (the generator is public); server packs only stop fake uploads.
 - **Live score:** each daily pick is sent right away; submit_pick returns that player's count
   and the prompt total, and the pick is scored immediately.
 - **Pick rate:** Bayesian blend: rate = (picks + K * simulated share) / (all picks + K), K = 100.
@@ -150,7 +169,7 @@ steps and check in before big changes.
   (propose_fame_model: first valid one wins; must be the next day, within bounds, weights within
   0.06 and pull within 16% of the previous, other settings unchanged; an older model without
   the v2 keys is treated as the v2 default).
-- **Settling:** once a date closes, the game re-scores that pack from get_pick_rates on the
+- **Settling:** once a date closes (midnight ET + 5 min), the game re-scores that pack from get_pick_rates on the
   player's next visit and shows "Your <date> pack settled: X final (live score was Y)".
 - **One per user:** one pick per prompt per user and one submission per user per day (unique
   keys). A second device loads what the account already did today (get_my_day). Skipped
@@ -253,6 +272,11 @@ wood court with crowd parallax.
    once fill_details.py has checked awards for ~99% of players.
 4. Supabase: daily pack per date, store picks, compute real pick rates.
 5. Tune tier ranges with real data.
+
+## Before public launch (remind Lanky)
+- Turnstile CAPTCHA is built but on hold: Cloudflare widget for lankyshoota.github.io -> site key
+  into TURNSTILE_KEY -> deploy -> Supabase Attack Protection: CAPTCHA on with the secret key.
+- GoatCounter site code into GOATCOUNTER (if not done).
 
 ## Open questions (ask Lanky)
 - Anti-cheat: guests can make a new anonymous user by clearing site data. Basic version for now

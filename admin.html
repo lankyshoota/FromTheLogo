@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>FromTheLogo admin</title>
+<link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Barlow+Semi+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Admin dashboard. Only accounts in the admins table get data: get_admin_dashboard() checks
+   the signed-in user server-side; this page just draws what comes back. Dark like the game. */
+:root{
+  color-scheme:dark;
+  --binder:#19141f; --page:#221b29; --sleeve:#2a2232; --line:rgba(239,232,220,.13); --grid:rgba(239,232,220,.07);
+  --text:#efe8dc; --muted:#a89dae; --gold:#e8b84a; --miss:#d9685c; --good:#0ca30c; --warning:#fab219;
+  --series-1:#3987e5; --series-2:#d95926;   /* validated pair on --page (dataviz validator, dark) */
+  --display:'Big Shoulders Display','Arial Narrow',Impact,sans-serif;
+  --body:'Barlow Semi Condensed','Arial Narrow',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--binder);color:var(--text)}
+body{font:400 16px/1.4 var(--body)}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 60px;display:flex;flex-direction:column;gap:18px}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+h1{font:900 40px/.9 var(--display);text-transform:uppercase;margin:0}
+h1 span{color:var(--gold)}
+h2{font:900 22px var(--display);text-transform:uppercase;letter-spacing:.02em;margin:0 0 10px}
+.sub{font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.filters{display:flex;gap:6px;flex-wrap:wrap}
+.filters button{font:600 13px var(--mono);color:var(--text);background:transparent;border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--text);color:var(--binder);border-color:var(--text)}
+.card{background:var(--page);border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.tile{background:var(--page);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.tile .label{font-size:14px;color:var(--muted)}
+.tile .value{font:600 30px/1.1 var(--body);margin-top:2px}
+.tile .delta{font:500 12px var(--mono);color:var(--muted)}
+.banner{border-radius:12px;padding:12px 14px;border:1px solid;display:flex;gap:10px;align-items:flex-start}
+.banner.warn{border-color:rgba(250,178,25,.5);background:rgba(250,178,25,.08)}
+.banner.bad{border-color:rgba(217,104,92,.6);background:rgba(217,104,92,.1)}
+.banner b{display:block}
+.legend{display:flex;gap:14px;font-size:14px;color:var(--muted);margin-bottom:6px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+svg{display:block;width:100%;height:auto;overflow:visible}
+svg text{font:500 10px var(--mono);fill:var(--muted)}
+svg .grid line{stroke:var(--grid)}
+svg .axis{stroke:var(--line)}
+svg .end{font:600 11px var(--mono);fill:var(--text)}
+.tip{position:fixed;pointer-events:none;background:#0f0b13;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:500 13px var(--body);color:var(--text);box-shadow:0 8px 24px rgba(0,0,0,.5);z-index:10;max-width:260px}
+.tip b{font-weight:600}
+.tip .k{display:flex;gap:6px;align-items:center;color:var(--muted)}
+.tip .k i{width:8px;height:8px;border-radius:2px}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th{font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;padding:4px 8px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:6px 8px;border-bottom:1px solid var(--grid);vertical-align:top}
+.tbl td.n,.tbl th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl .muted{color:var(--muted)}
+.scroll{overflow-x:auto}
+#cPlayers,#cScore{overflow-x:auto}
+#cPlayers svg,#cScore svg{min-width:440px}
+.tbl.days td:first-child{white-space:nowrap}
+details summary{cursor:pointer;color:var(--muted);font:600 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;margin-top:8px}
+.btn{font:600 12px var(--mono);color:var(--text);background:transparent;border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer}
+.btn:hover{border-color:var(--gold);color:var(--gold)}
+.ramp{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.ramp span{display:inline-block;width:18px;height:10px}
+.msg{color:var(--muted)}
+.note{font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>From the <span>Logo</span> · admin</h1><div class="sub" id="sub">Loading…</div></div>
+    <div class="filters" role="group" aria-label="Date range" id="range"></div>
+  </header>
+  <main id="main"><p class="msg">Loading…</p></main>
+</div>
+<div class="tip" id="tip" hidden></div>
+<script>
+const SB_URL = 'https://irtsjiluvpbxgxvteots.supabase.co';
+const SB_KEY = 'sb_publishable_fpOzn7FpnH4-OnC1PN5jVQ_6n75KR6K';
+const SB_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js';
+const RANGES = [7, 14, 30, 90];
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtDay = d => new Date(d + 'T12:00:00Z').toLocaleDateString(undefined, { timeZone:'UTC', month:'short', day:'numeric' });
+const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '–';
+const num = v => v == null ? '–' : Number(v).toLocaleString();
+let sb = null, days = 30, data = null;
+try { days = +localStorage.getItem('ftl-admin-days') || 30; } catch(e){}
+let PLAYERS = new Map();
+
+function loadScript(src){ return new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); }); }
+
+async function boot(){
+  try { await loadScript(SB_JS); } catch(e){ return fail("Couldn't load the Supabase library."); }
+  sb = supabase.createClient(SB_URL, SB_KEY, { auth:{ persistSession:true, autoRefreshToken:true } });
+  const { data:{ session } } = await sb.auth.getSession();
+  if (!session || session.user.is_anonymous) return fail('Log in to the game with your admin account first, then come back to this page.', true);
+  const { data:ok } = await sb.rpc('is_admin');
+  if (!ok) return fail("This account isn't an admin. Add it to the admins table (see CLAUDE.md).", true);
+  fetch('players.json').then(r => r.json()).then(ps => { PLAYERS = new Map(ps.map(p => [p.id, p.n])); if (data) render(); }).catch(() => {});
+  drawRange(); await refresh();
+}
+function fail(msg, link){
+  $('sub').textContent = 'Not signed in as admin';
+  $('main').innerHTML = `<div class="banner bad"><div><b>${esc(msg)}</b>${link ? '<a href="./" style="color:var(--gold)">Open the game</a>' : ''}</div></div>`;
+}
+function drawRange(){
+  $('range').innerHTML = RANGES.map(r => `<button type="button" data-d="${r}" aria-pressed="${r === days}">${r} days</button>`).join('');
+  $('range').querySelectorAll('button').forEach(b => b.onclick = () => { days = +b.dataset.d; try { localStorage.setItem('ftl-admin-days', days); } catch(e){} drawRange(); refresh(); });
+}
+async function refresh(){
+  const { data:d, error } = await sb.rpc('get_admin_dashboard', { p_days:days });
+  if (error) return fail(error.message);
+  data = d; render();
+}
+const name = id => id == null ? '?' : PLAYERS.get(id) || `#${id}`;
+
+/* ---------- render ---------- */
+function render(){
+  const d = data, all = d.daily || [], first = all.findIndex(x => x.players > 0);
+  const daily = first > 0 ? all.slice(first) : all, today = daily[daily.length - 1] || {}, yest = daily[daily.length - 2] || {};
+  $('sub').textContent = `Eastern dates ${fmtDay(d.from)} – ${fmtDay(d.today)} · ${num(d.totals.players)} players ever · ${num(d.totals.accounts)} accounts`;
+  const closed = daily.slice(0, -1);   // today is still running
+  const sum = k => daily.reduce((a, x) => a + (x[k] || 0), 0);
+  const d1 = closed.filter(x => x.d1_back != null && x.new_players), d7 = daily.filter(x => x.d7_back != null && x.new_players);
+  const ret = rows => rows.reduce((a, x) => a + x.new_players, 0) ? Math.round(100 * rows.reduce((a, x) => a + x[rows === d1 ? 'd1_back' : 'd7_back'], 0) / rows.reduce((a, x) => a + x.new_players, 0)) + '%' : '–';
+  const left = d.packs.days_left;
+  const banner = left < 60
+    ? `<div class="banner ${left < 14 ? 'bad' : 'warn'}"><div><b>⚠ Only ${left} day${left === 1 ? '' : 's'} of packs left (last: ${fmtDay(d.packs.last_date)})</b>Run <code>node make_packs.js</code> and paste the new <code>supabase/packs.sql</code> into Supabase.</div></div>` : '';
+  const reports = d.reports || [];
+  $('main').innerHTML = `${banner}
+    <div class="tiles">
+      ${tile('Players today', num(today.players), `yesterday ${num(yest.players)}`)}
+      ${tile('Finished today', num(today.finished), `${pct(today.finished, today.players)} of starters · ${num(today.finished_hard)} hard`)}
+      ${tile('New players', num(sum('new_players')), `last ${days} days`)}
+      ${tile('Signups', num(sum('signups')), `last ${days} days`)}
+      ${tile('D1 retention', ret(d1), 'new players back next day')}
+      ${tile('D7 retention', ret(d7), 'back 7 days later')}
+      ${tile('Avg score today', today.avg_score == null ? '–' : Math.round(today.avg_score), today.median == null ? '' : `median ${today.median}`)}
+      ${tile('Packs scheduled', `${left} days`, `through ${fmtDay(d.packs.last_date)}`)}
+      ${tile('Open reports', num(reports.reduce((a, r) => a + r.n, 0)), `${reports.length} distinct`)}
+    </div>
+    <div class="grid">
+      <section class="card"><h2>Daily players</h2>
+        <div class="legend"><span><i style="background:var(--series-1)"></i>Returning</span><span><i style="background:var(--series-2)"></i>New</span></div>
+        <div id="cPlayers"></div></section>
+      <section class="card"><h2>Average score</h2>
+        <div class="legend"><span><i style="background:var(--series-1)"></i>Easy</span><span><i style="background:var(--series-2)"></i>Hard</span></div>
+        <div id="cScore"></div></section>
+    </div>
+    <section class="card"><h2>Score distribution by day</h2>
+      <div class="ramp">fewer <span style="background:#104281"></span><span style="background:#1c5cab"></span><span style="background:#2a78d6"></span><span style="background:#5598e7"></span><span style="background:#86b6ef"></span><span style="background:#b7d3f6"></span> more of that day's finishers</div>
+      <div id="cDist"></div></section>
+    <section class="card"><h2>By day</h2><div class="scroll">${dayTable(daily)}</div>
+      <p class="note">D1 / D7: of the players whose first pack was that day, how many played again 1 / 7 days later (blank until that day comes). Completion = finished ÷ played.</p></section>
+    <div class="grid">
+      <section class="card"><h2>Most picked answers</h2><div class="scroll">${mostPicked(d.prompts)}</div></section>
+      <section class="card"><h2>Highest brick rate</h2><div class="scroll">${bricks(d.prompts)}</div></section>
+    </div>
+    <div class="grid">
+      <section class="card"><h2>Lowest score spread</h2><div class="scroll">${spread(d.prompts)}</div>
+        <p class="note">Spread = how much the points on that prompt varied between players. Low = nearly everyone got the same card (or bricked): the prompt isn't separating anyone.</p></section>
+      <section class="card"><h2>Open wrong-answer reports</h2><div class="scroll">${reportTable(reports)}</div></section>
+    </div>`;
+  shown = daily; playersChart(daily); scoreChart(daily); distChart(daily);
+  document.querySelectorAll('[data-rep]').forEach(b => b.onclick = async () => {
+    const r = reports[+b.dataset.rep]; b.disabled = true;
+    const { error } = await sb.rpc('set_report_status', { p_ids:r.ids, p_status:b.dataset.st });
+    if (error) { alert(error.message); b.disabled = false; } else refresh();
+  });
+}
+const tile = (label, value, delta) => `<div class="tile"><div class="label">${esc(label)}</div><div class="value">${value}</div><div class="delta">${esc(delta || '')}</div></div>`;
+
+function dayTable(daily){
+  return `<table class="tbl days"><thead><tr><th>Day</th><th class="n">Players</th><th class="n">New</th><th class="n">Signups</th><th class="n">Finished</th><th class="n">Completion</th><th class="n">Hard</th><th class="n">D1</th><th class="n">D7</th><th class="n">Avg</th><th class="n">Easy avg</th><th class="n">Hard avg</th><th class="n">Median</th></tr></thead><tbody>
+    ${daily.slice().reverse().map(x => `<tr><td>${fmtDay(x.d)}</td><td class="n">${num(x.players)}</td><td class="n">${num(x.new_players)}</td><td class="n">${num(x.signups)}</td><td class="n">${num(x.finished)}</td><td class="n">${pct(x.finished, x.players)}</td><td class="n">${num(x.finished_hard)}</td>
+      <td class="n">${x.d1_back == null ? '' : pct(x.d1_back, x.new_players)}</td><td class="n">${x.d7_back == null ? '' : pct(x.d7_back, x.new_players)}</td>
+      <td class="n">${x.avg_score ?? '–'}</td><td class="n">${x.avg_easy ?? '–'}</td><td class="n">${x.avg_hard ?? '–'}</td><td class="n">${x.median ?? '–'}</td></tr>`).join('')}
+  </tbody></table>`;
+}
+const promptCell = p => `<span class="muted">${fmtDay(p.pack_date)} #${p.prompt_idx + 1}</span> ${esc(p.text)}`;
+function mostPicked(ps){
+  const rows = ps.filter(p => p.top).sort((a, b) => b.top.share - a.top.share).slice(0, 12);
+  if (!rows.length) return '<p class="msg">No picks yet.</p>';
+  return `<table class="tbl"><thead><tr><th>Prompt</th><th>Top answer</th><th class="n">Share</th><th class="n">Picks</th></tr></thead><tbody>
+    ${rows.map(p => `<tr><td>${promptCell(p)}</td><td>${esc(name(p.top.player_id))}</td><td class="n">${p.top.share}%</td><td class="n">${p.top.picks} / ${p.top.total}</td></tr>`).join('')}</tbody></table>`;
+}
+function bricks(ps){
+  const rows = ps.filter(p => p.finishers >= 5).map(p => ({ ...p, rate: p.bricks / p.finishers })).sort((a, b) => b.rate - a.rate).slice(0, 12);
+  if (!rows.length) return '<p class="msg">Needs 5+ finishers on a pack.</p>';
+  return `<table class="tbl"><thead><tr><th>Prompt</th><th class="n">Brick rate</th><th class="n">Bricks</th></tr></thead><tbody>
+    ${rows.map(p => `<tr><td>${promptCell(p)}</td><td class="n">${Math.round(100 * p.rate)}%</td><td class="n">${p.bricks} / ${p.finishers}</td></tr>`).join('')}</tbody></table>`;
+}
+function spread(ps){
+  const rows = ps.filter(p => p.finishers >= 5).sort((a, b) => a.spread - b.spread).slice(0, 12);
+  if (!rows.length) return '<p class="msg">Needs 5+ finishers on a pack.</p>';
+  return `<table class="tbl"><thead><tr><th>Prompt</th><th class="n">Spread (pts)</th><th class="n">Finishers</th></tr></thead><tbody>
+    ${rows.map(p => `<tr><td>${promptCell(p)}</td><td class="n">${Number(p.spread).toFixed(1)}</td><td class="n">${p.finishers}</td></tr>`).join('')}</tbody></table>`;
+}
+function reportTable(rs){
+  if (!rs.length) return '<p class="msg">No open reports.</p>';
+  return `<table class="tbl"><thead><tr><th>Prompt</th><th>Report</th><th class="n">×</th><th></th></tr></thead><tbody>
+    ${rs.map((r, k) => `<tr><td><span class="muted">${fmtDay(r.pack_date)} #${r.prompt_idx + 1}</span> ${esc(r.text)}<div class="muted">${esc(r.prompt_id)}</div></td>
+      <td><b>${esc(r.player_name)}</b> ${r.kind === 'wrong' ? 'counted but doesn’t fit' : 'fits but wasn’t accepted'}${r.player_id ? '' : ' <span class="muted">(name not in players.json)</span>'}
+        ${(r.notes || []).map(n => `<div class="muted">“${esc(n)}”</div>`).join('')}</td>
+      <td class="n">${r.n}</td>
+      <td style="white-space:nowrap"><button class="btn" data-rep="${k}" data-st="fixed">Fixed</button> <button class="btn" data-rep="${k}" data-st="dismissed">Dismiss</button></td></tr>`).join('')}</tbody></table>`;
+}
+
+/* ---------- charts (inline SVG; hover tooltips; the By day table is the table view) ---------- */
+const W = 520, H = 220, M = { l:34, r:40, t:10, b:24 };
+const niceMax = v => { if (v <= 5) return 5; const p = 10 ** Math.floor(Math.log10(v)), n = v / p; return (n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; };
+let shown = [];   // the days on the charts' x axis
+function axes(n, yMax, xAt, fmtY = num){
+  const ticks = [0, .25, .5, .75, 1].map(f => f * yMax), y = v => M.t + (H - M.t - M.b) * (1 - v / yMax);
+  const every = Math.ceil(n / 7);
+  return `<g class="grid">${ticks.map(t => `<line x1="${M.l}" x2="${W - M.r}" y1="${y(t)}" y2="${y(t)}"/>`).join('')}</g>
+    ${ticks.map(t => `<text x="${M.l - 6}" y="${y(t) + 3}" text-anchor="end">${fmtY(t)}</text>`).join('')}
+    <line class="axis" x1="${M.l}" x2="${W - M.r}" y1="${H - M.b}" y2="${H - M.b}"/>
+    ${shown.map((x, i) => i % every === (n - 1) % every ? `<text x="${xAt(i)}" y="${H - 8}" text-anchor="middle">${fmtDay(x.d)}</text>` : '').join('')}`;
+}
+function tipAt(e, html){ const t = $('tip'); t.innerHTML = html; t.hidden = false;
+  const x = Math.min(innerWidth - t.offsetWidth - 8, e.clientX + 14), y = Math.min(innerHeight - t.offsetHeight - 8, e.clientY + 14);
+  t.style.left = x + 'px'; t.style.top = y + 'px'; }
+const hideTip = () => { $('tip').hidden = true; };
+const key = (c, label, v) => `<div class="k"><i style="background:${c}"></i>${label} <b style="color:var(--text)">${v}</b></div>`;
+
+function playersChart(daily){
+  const n = daily.length, bw = (W - M.l - M.r) / n, yMax = niceMax(Math.max(1, ...daily.map(x => x.players)));
+  const xAt = i => M.l + bw * (i + .5), y = v => M.t + (H - M.t - M.b) * (1 - v / yMax);
+  const w = Math.max(2, Math.min(28, bw - 2));   // 2px surface gap between columns
+  const bars = daily.map((x, i) => {
+    const ret = Math.max(0, x.players - x.new_players), x0 = xAt(i) - w / 2;
+    const hNew = y(0) - y(x.new_players), hRet = y(0) - y(ret);
+    return `<g data-i="${i}">
+      ${ret ? `<path d="${colPath(x0, y(ret), w, hRet, !x.new_players)}" fill="var(--series-1)"/>` : ''}
+      ${x.new_players ? `<path d="${colPath(x0, y(x.players), w, hNew - (ret ? 2 : 0), true)}" fill="var(--series-2)"/>` : ''}
+      <rect x="${M.l + bw * i}" y="${M.t}" width="${bw}" height="${H - M.t - M.b}" fill="transparent"/></g>`;
+  }).join('');
+  const last = daily[n - 1];
+  $('cPlayers').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily players, returning and new, ${n} days">${axes(n, yMax, xAt)}${bars}
+    ${last ? `<text class="end" x="${xAt(n - 1)}" y="${y(last.players) - 6}" text-anchor="middle">${last.players}</text>` : ''}</svg>`;
+  $('cPlayers').querySelectorAll('g[data-i]').forEach(g => {
+    const x = daily[+g.dataset.i];
+    g.onmousemove = e => tipAt(e, `<b>${fmtDay(x.d)}</b>${key('var(--series-1)', 'Returning', x.players - x.new_players)}${key('var(--series-2)', 'New', x.new_players)}<div class="k">Total <b style="color:var(--text)">${x.players}</b></div>`);
+    g.onmouseleave = hideTip;
+  });
+}
+// a column with 4px rounded top corners when it's the top segment, square otherwise
+function colPath(x, y, w, h, roundTop){
+  if (h <= 0) return '';
+  const r = roundTop ? Math.min(4, w / 2, h) : 0;
+  return `M${x},${y + h}V${y + r}${r ? `Q${x},${y} ${x + r},${y}` : ''}H${x + w - r}${r ? `Q${x + w},${y} ${x + w},${y + r}` : ''}V${y + h}Z`;
+}
+function scoreChart(daily){
+  const n = daily.length, xAt = i => M.l + (W - M.l - M.r) * (n === 1 ? .5 : i / (n - 1));
+  const yMax = niceMax(Math.max(100, ...daily.flatMap(x => [x.avg_easy || 0, x.avg_hard || 0])));
+  const y = v => M.t + (H - M.t - M.b) * (1 - v / yMax);
+  const ends = {};   // end-label y per series, nudged apart below if they'd overlap
+  daily.forEach((x, i) => ['avg_easy', 'avg_hard'].forEach(k => { if (x[k] != null) ends[k] = y(x[k]); }));
+  if (ends.avg_easy != null && ends.avg_hard != null && Math.abs(ends.avg_easy - ends.avg_hard) < 12) {
+    const mid = (ends.avg_easy + ends.avg_hard) / 2, up = ends.avg_easy <= ends.avg_hard ? 'avg_easy' : 'avg_hard';
+    ends[up] = mid - 6; ends[up === 'avg_easy' ? 'avg_hard' : 'avg_easy'] = mid + 6;
+  }
+  const line = (k, c) => {
+    const pts = daily.map((x, i) => x[k] == null ? null : [xAt(i), y(x[k])]);
+    let d = '', pen = false; pts.forEach(p => { if (!p) { pen = false; return; } d += (pen ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1); pen = true; });
+    const lastI = pts.map((p, i) => p ? i : -1).filter(i => i >= 0).pop();
+    return `<path d="${d}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${lastI != null ? `<circle cx="${pts[lastI][0]}" cy="${pts[lastI][1]}" r="4" fill="${c}" stroke="var(--page)" stroke-width="2"/><text class="end" x="${pts[lastI][0] + 7}" y="${ends[k] + 4}">${Math.round(daily[lastI][k])}</text>` : ''}`;
+  };
+  $('cScore').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Average score by day, easy and hard mode">${axes(n, yMax, xAt)}
+    ${line('avg_easy', 'var(--series-1)')}${line('avg_hard', 'var(--series-2)')}
+    <line id="xh" class="axis" y1="${M.t}" y2="${H - M.b}" visibility="hidden"/>
+    <rect id="hit" x="${M.l}" y="${M.t}" width="${W - M.l - M.r}" height="${H - M.t - M.b}" fill="transparent"/></svg>`;
+  const svg = $('cScore').querySelector('svg'), xh = svg.querySelector('#xh');
+  svg.querySelector('#hit').onmousemove = e => {
+    const r = svg.getBoundingClientRect(), sx = (e.clientX - r.left) * W / r.width;
+    const i = Math.max(0, Math.min(n - 1, Math.round((sx - M.l) / ((W - M.l - M.r) / Math.max(1, n - 1)))));
+    const x = daily[i]; xh.setAttribute('x1', xAt(i)); xh.setAttribute('x2', xAt(i)); xh.setAttribute('visibility', 'visible');
+    tipAt(e, `<b>${fmtDay(x.d)}</b>${key('var(--series-1)', 'Easy', x.avg_easy ?? '–')}${key('var(--series-2)', 'Hard', x.avg_hard ?? '–')}<div class="k">All <b style="color:var(--text)">${x.avg_score ?? '–'}</b> · median ${x.median ?? '–'}</div>`);
+  };
+  svg.querySelector('#hit').onmouseleave = () => { hideTip(); xh.setAttribute('visibility', 'hidden'); };
+}
+const RAMP = ['#104281', '#1c5cab', '#2a78d6', '#5598e7', '#86b6ef', '#b7d3f6'];   // one hue, dark surface: more = lighter
+function distChart(daily){
+  const rows = daily.slice().reverse().filter(x => x.finished), cw = 30, rh = 20, L = 58, T = 4;
+  if (!rows.length) { $('cDist').innerHTML = '<p class="msg">No finished packs in this range.</p>'; return; }
+  const w = L + cw * 16 + 14, h = T + rh * rows.length + 22;
+  const cells = rows.map((x, r) => {
+    const tot = x.hist.reduce((a, c) => a + c, 0) || 1;
+    return `<text x="${L - 6}" y="${T + r * rh + rh / 2 + 3}" text-anchor="end">${fmtDay(x.d)}</text>` + x.hist.map((c, b) => {
+      const share = c / tot, k = c ? Math.min(5, Math.floor(share * 12)) : -1;
+      return `<rect data-r="${r}" data-b="${b}" x="${L + b * cw + 1}" y="${T + r * rh + 1}" width="${cw - 2}" height="${rh - 2}" rx="3" fill="${k < 0 ? 'rgba(239,232,220,.03)' : RAMP[k]}"/>`;
+    }).join('');
+  }).join('');
+  const xt = [0, 200, 400, 600, 800].map(v => `<text x="${L + (v / 50) * cw}" y="${h - 6}" text-anchor="middle">${v}</text>`).join('');
+  $('cDist').innerHTML = `<div class="scroll"><svg viewBox="0 0 ${w} ${h}" style="width:${w}px;max-width:none" role="img" aria-label="Share of each day's finishers per 50-point score band">${cells}${xt}</svg></div>`;
+  $('cDist').querySelectorAll('rect[data-r]').forEach(c => {
+    const x = rows[+c.dataset.r], b = +c.dataset.b, n = x.hist[b], tot = x.hist.reduce((a, v) => a + v, 0);
+    c.onmousemove = e => tipAt(e, `<b>${fmtDay(x.d)} · ${b * 50}–${b === 15 ? 800 : b * 50 + 49} pts</b><div class="k">${n} of ${tot} finishers (${pct(n, tot)})</div>`);
+    c.onmouseleave = hideTip;
+  });
+}
+boot();
+</script>
+</body>
+</html>

@@ -366,6 +366,14 @@ let GEN = null, RM = null;
 /* One pack a day. ?test=1 turns on a hidden test mode (for Lanky): unlimited practice packs that
    never save picks, so prompts and scoring can be tried without using up the daily pack. */
 const TEST_MODE = new URLSearchParams(location.search).get('test') === '1';
+/* traffic stats (GoatCounter: no cookies, no banner). Site code from goatcounter.com, e.g.
+   'fromthelogo' for fromthelogo.goatcounter.com. Empty = off. Test mode and local copies don't count. */
+const GOATCOUNTER = '';
+if (GOATCOUNTER && !TEST_MODE && !/^(localhost|127\.|\[?::1)/.test(location.hostname)) {
+  const gc = document.createElement('script');
+  gc.async = true; gc.src = 'https://gc.zgo.at/count.js'; gc.dataset.goatcounter = `https://${GOATCOUNTER}.goatcounter.com/count`;
+  document.head.appendChild(gc);
+}
 const PACK_SIZE = FTLPrompts.PACK_SIZE;   // prompts per pack (8)
 const MAX_PTS = PACK_SIZE * 100;          // a perfect pack: all 1 of 1s
 const PROMPTS = new Proxy({}, { get: (_, id) => (GEN && typeof id === 'string' && GEN.get(id)) || undefined });
@@ -403,11 +411,32 @@ const fmtPct = p => p < 0.1 ? '<0.1%' : p < 10 ? p.toFixed(1) + '%' : Math.round
 const rateTag = st => st.mode !== 'daily' || !st.online ? 'est.' : st.settled ? 'final' : 'live';
 function serial(){ return ''; }   // tier names say it all now ("1 of 1")
 
-/* dates */
-function localKey(d=new Date()){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-const DAY0 = new Date(2026,9,21);
-const today = new Date(); today.setHours(0,0,0,0);
-const dayNum = Math.round((today - DAY0)/864e5) + 1;
+/* dates: one global day, Eastern time (America/New_York, daylight saving included). Everyone gets
+   the new pack at midnight ET. The server's clock decides (get_today, synced at startup); the
+   device clock is only the fallback when offline. */
+const TZ = 'America/New_York';
+const GRACE = 5 * 60000;   // a pack in progress at midnight can finish (pack_date_open in schema.sql)
+let clockSkew = 0;          // server time minus device time
+const nowMs = () => Date.now() + clockSkew;
+const ET_FMT = new Intl.DateTimeFormat('en-US', { timeZone:TZ, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hourCycle:'h23' });
+const etParts = ms => Object.fromEntries(ET_FMT.formatToParts(ms).map(x => [x.type, x.value]));
+function dayKey(ms = nowMs()){ const x = etParts(ms); return `${x.year}-${x.month}-${x.day}`; }
+const addDays = (key, n) => { const [y,m,d] = key.split('-').map(Number); return new Date(Date.UTC(y, m-1, d+n)).toISOString().slice(0, 10); };
+function etStart(key){   // the instant a date starts in Eastern time (midnight ET)
+  const [y,m,d] = key.split('-').map(Number), want = Date.UTC(y, m-1, d);
+  let t = want + 5 * 3600e3;   // EST guess, then correct for daylight saving
+  for (let k = 0; k < 2; k++) { const x = etParts(t); t += want - Date.UTC(+x.year, +x.month-1, +x.day, +x.hour, +x.minute, +x.second); }
+  return t;
+}
+const packNum = key => Math.round((Date.parse(key) - Date.parse('2026-10-21')) / 864e5);   // Oct 22 = pack #1
+const fmtDate = (key, opts = { month:'short', day:'numeric' }) => new Date(key + 'T12:00:00Z').toLocaleDateString(undefined, { timeZone:'UTC', ...opts });
+async function syncClock(){
+  if (!sb) return;
+  try {
+    const t0 = Date.now(), r = await rpc('get_today', {}, 4000), t1 = Date.now();
+    clockSkew = Date.parse(r.now) - (t0 + t1) / 2;
+  } catch(e){ console.warn('get_today failed; using the device clock', e); }
+}
 
 function buildPack(seed){
   return seed.startsWith('daily-') ? GEN.daily(seed.slice(6)) : GEN.random(rng(seed));
@@ -419,11 +448,11 @@ const prefLevel = () => { try { return localStorage.getItem(LEVEL_KEY) === 'hard
 const isHard = (st = state) => st.level === 'hard';
 const HARD_BADGE = '🔥 HARD';
 function freshState(mode, seed){
-  return { mode, seed, tv:2, level: prefLevel(), date: localKey(), started:false, prompts: buildPack(seed), slots: Array.from({length:PACK_SIZE}, () => ({ status:'open', strikes:0 })), active:0 };
+  return { mode, seed, tv:2, level: prefLevel(), date: dayKey(), started:false, prompts: buildPack(seed), slots: Array.from({length:PACK_SIZE}, () => ({ status:'open', strikes:0 })), active:0 };
 }
 /* saved packs are per user: fromthelogo:<user id>:<date> ("local" when offline with no user) */
 const storeKey = (date, uid = user?.id || 'local') => `fromthelogo:${uid}:${date}`;
-function load(date = localKey()){
+function load(date = dayKey()){
   try {
     const s = JSON.parse(localStorage.getItem(storeKey(date)));
     if (s && s.prompts && s.prompts.length === PACK_SIZE && s.prompts.every(id => PROMPTS[id])) {
@@ -453,7 +482,7 @@ async function rpc(fn, args = {}, ms = 4000){
 }
 const withTimeout = (promise, ms) => Promise.race([promise, new Promise((_, no) => setTimeout(() => no(new Error('timeout')), ms))]);
 /* a date's picks are open while it's that date somewhere on Earth: until 00:00 UTC two days later */
-const closesAt = date => { const [y,m,d] = date.split('-').map(Number); return Date.UTC(y, m-1, d+2); };
+const closesAt = date => etStart(addDays(date, 1)) + GRACE;   // end of that Eastern day (+ grace)
 
 /* everyone gets the pack stored in Supabase; the first player of the day stores the one their browser built */
 /* why the game is offline, shown in the footer and the Offline panel */
@@ -516,7 +545,7 @@ async function sendPick(st, idx, playerId){
 /* picks that didn't make it (offline, timeout) go up on the next visit, while the date is still open */
 async function flushUnsent(st){
   if (!st.unsent?.length) return;
-  if (Date.now() >= closesAt(st.date)) { st.unsent = []; save(st); return; }
+  if (nowMs() >= closesAt(st.date)) { st.unsent = []; save(st); return; }
   for (const [idx, id] of [...st.unsent]) {
     try { await rpc('submit_pick', pickArgs(st, idx, id)); if (st.slots[idx]) st.slots[idx].sent = true; }
     catch(e){ break; }
@@ -525,7 +554,7 @@ async function flushUnsent(st){
 }
 async function sendScore(st){
   if (st.mode !== 'daily' || !st.online || st.scoreSent || st.slots.some(s => s.status === 'open')) return st.scoreSent;
-  if (Date.now() >= closesAt(st.date)) return;
+  if (nowMs() >= closesAt(st.date)) return;
   try {
     await rpc('submit_score', { p_date:st.date, p_total:st.slots.reduce((a,s) => a + (s.pts||0), 0), p_mode:st.level || 'hard' });
     st.scoreSent = true; save(st);
@@ -534,7 +563,7 @@ async function sendScore(st){
 }
 /* once a date closes, re-score its pack with the final pick rates */
 async function settle(st){
-  if (st.settled || !st.online || Date.now() < closesAt(st.date)) return false;
+  if (st.settled || !st.online || nowMs() < closesAt(st.date)) return false;
   loadRates(st.date, await rpc('get_pick_rates', { p_date:st.date }));
   const live = st.slots.reduce((a,s) => a + (s.pts||0), 0);
   st.slots.forEach((s, i) => {
@@ -547,12 +576,11 @@ async function settle(st){
 async function settlePast(){
   let latest = null;
   for (let k = 7; k >= 1; k--) {
-    const d = new Date(today); d.setDate(d.getDate() - k);
-    const st = load(localKey(d)); if (!st) continue;
+    const st = load(addDays(dayKey(), -k)); if (!st) continue;
     try { await flushUnsent(st); if (await settle(st)) latest = st; } catch(e){}
   }
   if (!latest) return;
-  const day = new Date(latest.date + 'T12:00').toLocaleDateString(undefined, { month:'short', day:'numeric' });
+  const day = fmtDate(latest.date);
   const { live, total } = latest.settled;
   note(`Your ${day} pack settled: <strong>${total}</strong> final` + (total !== live ? ` (live score was ${live})` : ' (same as live)'));
 }
@@ -560,7 +588,6 @@ async function settlePast(){
    Supabase keeps one model per settled day. The first player after a day settles computes the
    next model from that day's picks (RM.update) and proposes it; the server keeps the first valid
    one, so everyone scores with the same weights. */
-const addDays = (key, n) => { const [y,m,d] = key.split('-').map(Number); return new Date(Date.UTC(y, m-1, d+n)).toISOString().slice(0, 10); };
 function useModel(m){ RM.setModel(m); oddsCache = {}; }
 async function loadModel(){
   if (!sb) return null;
@@ -586,7 +613,7 @@ async function catchUpModel(row){
   try {
     for (let i = 0; i < 7; i++) {                       // at most a week per visit
       const next = addDays(d, 1);
-      if (Date.now() < closesAt(next)) break;           // not settled yet
+      if (nowMs() < closesAt(next)) break;           // not settled yet
       const day = await rpc('get_closed_day', { p_date:next }, 8000);
       RM.setModel(m);
       const proposed = day ? RM.update(trainingDay(day)) : m;
@@ -896,7 +923,7 @@ function sheetAccount(){
 function sheetHelp(){
   openSheet(`<div class="howto"><h2>How to play</h2>
     <ul>
-      <li><strong>One pack a day.</strong> ${PACK_SIZE} prompts, the same for everyone.</li>
+      <li><strong>One pack a day.</strong> ${PACK_SIZE} prompts, the same for everyone. A new pack drops at midnight Eastern (ET).</li>
       <li><strong>20 seconds per prompt.</strong> Name any NBA player (1970-71 on) who fits.</li>
       <li><strong>Easy:</strong> names pop up as you type (from every player, not just ones who fit).</li>
       <li><strong>Hard:</strong> no suggestions, type the full name. Same points; ranked only against other hard-mode players.</li>
@@ -907,7 +934,7 @@ function sheetHelp(){
     <table class="tiers"><thead><tr><th>Card</th><th>Picked by</th><th>Points</th></tr></thead><tbody>
       ${TIERS.map(t => `<tr><td><span class="swatch ${t.cls}"></span>${t.name}</td><td>${t.range}</td><td>${t.pts}</td></tr>`).join('')}
     </tbody></table>
-    <p>Scores update as more people play and lock at the end of the day.</p>
+    <p>Scores update as more people play and lock at midnight Eastern, when the next pack drops.</p>
     <button class="btn primary wide" id="helpClose">Got it</button></div>`);
   $('helpClose').onclick = closeSheet;
 }
@@ -936,14 +963,14 @@ async function showStats(){
   }
   v.innerHTML = '<div class="panel"><span class="meta">Loading your stats…</span></div>';
   let st;
-  try { st = await rpc('get_my_stats', { p_today:localKey() }, 8000); }
+  try { st = await rpc('get_my_stats', { p_today:dayKey() }, 8000); }
   catch(e){ v.innerHTML = `<div class="panel"><span class="meta">Couldn't load your stats. Try again in a bit.</span></div>`; return; }
   if (view !== 'stats') return;
   const n = x => (x ?? 0).toLocaleString();
   const tile = (val, label, sub = '') => `<div class="tile"><b>${val}</b><small>${label}</small>${sub ? `<span>${sub}</span>` : ''}</div>`;
   const name = id => BY_ID.get(id)?.n || `Player #${id}`;
   const r = st.rarest, rt = r && TIERS.find(t => t.id === r.tier);
-  const fmtDay = d => new Date(d + 'T12:00').toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
+  const fmtDay = d => fmtDate(d, { weekday:'short', month:'short', day:'numeric' });
   v.innerHTML = `
     <h2>@${esc(st.username || profile?.username || 'you')}</h2>
     <div class="tiles">
@@ -995,7 +1022,7 @@ const CLOCK = 20000;
 function render(flipIdx = -1){
   const done = state.slots.every(s => s.status !== 'open');
   $('sub').textContent = state.mode === 'daily'
-    ? `Pack #${dayNum} · ${today.toLocaleDateString(undefined,{month:'short',day:'numeric'})}`
+    ? `Pack #${packNum(state.date)} · ${fmtDate(state.date)}`
     : 'Unlimited pack';
   $('total').textContent = totalPts();
   $('foot').textContent = `${DB_NOTE} · ` + (state.mode !== 'daily' ? 'test pack: simulated pick rates, nothing saved'
@@ -1246,7 +1273,7 @@ function next(i){
 function shareText(){
   const total = state.slots.reduce((a,s)=>a+(s.pts||0),0);
   const row = state.slots.map(s => s.status === 'blank' ? '❌' : TIERS.find(t=>t.id===s.tier).emoji).join('');
-  const head = (state.mode === 'daily' ? `FromTheLogo #${dayNum}` : 'FromTheLogo · test pack') + (isHard() ? ' ' + HARD_BADGE : '');
+  const head = (state.mode === 'daily' ? `FromTheLogo #${packNum(state.date)}` : 'FromTheLogo · test pack') + (isHard() ? ' ' + HARD_BADGE : '');
   const d = distOf(total);
   return `${head}\n${row}\n${total} / ${MAX_PTS} · 🏀 ${Math.round(d)} ft (${distLabel(d)})`;
 }
@@ -1380,10 +1407,10 @@ function renderResults(done){
   const live = state.mode === 'daily' && state.online;
   if (live && ratesFor !== state.date) { ratesFor = state.date; refreshBoard(); }
   const b = live && board?.date === state.date ? board : null;
-  const lock = new Date(closesAt(state.date)).toLocaleString(undefined, { weekday:'short', hour:'numeric', minute:'2-digit' });
+  const lock = new Date(etStart(addDays(state.date, 1))).toLocaleString(undefined, { weekday:'short', hour:'numeric', minute:'2-digit' });
   const status = !live ? (state.mode === 'daily' ? 'Offline: scored on simulated pick rates.' : '')
     : state.settled ? 'Final score: pick rates are locked.'
-    : `Live score from everyone's picks so far. Final rarity locks ${lock}.`;
+    : `Live score from everyone's picks so far. Final rarity locks at midnight ET (${lock} your time).`;
   const total = state.slots.reduce((a,s)=>a+(s.pts||0),0);
   const best = state.slots.filter(s=>s.status==='pulled').sort((a,b)=>a.pct-b.pct)[0];
   $('results').innerHTML = `<div class="results">
@@ -1685,27 +1712,31 @@ const Stage = (() => {
   };
 })();
 
-/* countdown to the next daily pack (local midnight); reloads when it's ready */
+/* countdown to the next daily pack (midnight Eastern, by the server's clock) */
 function nextPackText(){
-  const now = new Date(), next = new Date(now); next.setHours(24, 0, 0, 0);
-  const mins = Math.max(0, Math.ceil((next - now) / 60000));
+  const mins = Math.max(0, Math.ceil((etStart(addDays(dayKey(), 1)) - nowMs()) / 60000));
   return mins ? `Next pack in ${Math.floor(mins / 60)}h ${mins % 60}m` : 'New pack is ready';
 }
 let countdown = null;
 function armCountdown(){
   clearInterval(countdown);
   if (!$('nextPack')) return;
-  const day = localKey();
   countdown = setInterval(() => {
-    if (localKey() !== day) { clearInterval(countdown); location.reload(); return; }
     const el = $('nextPack'); if (el) el.textContent = nextPackText(); else clearInterval(countdown);
-  }, 30000);
+  }, 15000);
 }
+/* at midnight ET the page loads the new pack by itself, unless you're mid-pack (that one can
+   still finish in the grace minutes; the new pack loads once you're done) */
+setInterval(() => {
+  if (!state || state.mode !== 'daily' || state.date === dayKey()) return;
+  const midPack = state.started && state.slots.some(s => s.status === 'open' || s.status === 'pending');
+  if (!midPack) location.reload();
+}, 10000);
 function rip(){ if (!state || !TEST_MODE) return; setView('game'); state = freshState('unlimited', 'rip-' + Date.now() + Math.random()); state.started = true; lastPull = null; msg={text:'',bad:false}; Stage.set(distOf(0)); render(); window.scrollTo({top:0,behavior:'smooth'}); focusInput(); }
 $('tabRip').addEventListener('click', rip);
 if (TEST_MODE) { $('tabRip').hidden = false; $('tabRip').textContent = 'Test pack (not saved)'; }
 async function openDaily(){
-  let st = load() || freshState('daily', 'daily-' + localKey());
+  let st = load() || freshState('daily', 'daily-' + dayKey());
   if (st.started === undefined) st.started = st.slots.some(s => s.status !== 'open');
   if (!st.online && st.mode === 'daily') await syncPack(st);   // keep retrying, even mid-pack
   await reconcileDay(st);
@@ -1730,6 +1761,7 @@ $('tabDaily').addEventListener('click', async () => {
   // Google account already had its own FromTheLogo account: log into that one; it claims the guest's packs on return
   if (urlErr?.code === 'identity_already_exists' && sb) { await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo:here() } }); return; }
   if (urlErr) note(urlErr.code === 'access_denied' ? 'Google sign-in was cancelled.' : `Sign-in problem: ${esc(urlErr.msg || urlErr.code)}`, true);
+  await syncClock();
   if (sb && !user) await sheetWelcome();
   await afterLogin();
   renderAccount();

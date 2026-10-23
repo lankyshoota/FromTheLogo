@@ -5,7 +5,8 @@
  *   node make_packs.js            # LAUNCH .. today + 365 days
  *   node make_packs.js 730        # .. today + 730 days
  *
- * Then paste supabase/packs.sql into the Supabase SQL editor. Re-running it replaces packs for
+ * Dates are Eastern calendar dates (the game's day runs midnight to midnight ET), so each row is
+ * the pack for that ET date. Then paste supabase/packs.sql into the Supabase SQL editor. Re-running it replaces packs for
  * dates nobody has played yet and never touches a date that already has picks. Re-run it after
  * players.json changes if you want future packs to use the new data (e.g. award prompts), and
  * before the schedule runs out (the admin page shows the last scheduled date).
