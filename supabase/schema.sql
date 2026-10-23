@@ -69,6 +69,11 @@ create table if not exists submissions (
 -- updates tables created by an earlier version of this file.
 alter table picks drop constraint if exists picks_prompt_idx_check;
 alter table picks add constraint picks_prompt_idx_check check (prompt_idx between 0 and 7);
+-- Easy (name suggestions while typing) or hard (type the full name). Chosen before the pack,
+-- one per day. Packs finished before modes existed were all typed in full: hard.
+alter table submissions add column if not exists mode text not null default 'hard';
+alter table submissions drop constraint if exists submissions_mode_check;
+alter table submissions add constraint submissions_mode_check check (mode in ('easy', 'hard'));
 alter table submissions drop constraint if exists submissions_total_check;
 alter table submissions add constraint submissions_total_check check (total between 0 and 800);
 
@@ -238,7 +243,8 @@ $$;
 
 -- Records a finished daily pack. One per user per day; later calls are ignored.
 drop function if exists submit_score(date, uuid, smallint, jsonb);
-create or replace function submit_score(p_date date, p_total smallint)
+drop function if exists submit_score(date, smallint);
+create or replace function submit_score(p_date date, p_total smallint, p_mode text default 'hard')
 returns void
 language plpgsql security definer
 set search_path = public
@@ -249,8 +255,11 @@ begin
   if not pack_date_open(p_date) then
     raise exception 'pack date % is closed', p_date;
   end if;
-  insert into submissions (pack_date, user_id, total)
-  values (p_date, me, greatest(0, least(800, p_total)))
+  if p_mode not in ('easy', 'hard') then
+    raise exception 'mode is easy or hard';
+  end if;
+  insert into submissions (pack_date, user_id, total, mode)
+  values (p_date, me, greatest(0, least(800, p_total)), p_mode)
   on conflict (pack_date, user_id) do nothing;
 end;
 $$;
@@ -264,6 +273,7 @@ set search_path = public
 as $$
   select jsonb_build_object(
     'submitted', exists (select 1 from submissions where pack_date = p_date and user_id = require_user()),
+    'mode',      (select mode from submissions where pack_date = p_date and user_id = require_user()),
     'picks', coalesce((select jsonb_agg(jsonb_build_object('prompt_idx', prompt_idx, 'player_id', player_id,
                                                            'pct', pct, 'tier', tier, 'pts', pts))
                        from pick_scores(require_user()) where pack_date = p_date), '[]'::jsonb));
@@ -379,6 +389,7 @@ as $$
   ),
   packs as (
     select d.pack_date, coalesce(sum(s.pts), 0)::int as score, not pack_date_open(d.pack_date) as final,
+           (select mode from submissions x where x.user_id = (select id from me) and x.pack_date = d.pack_date) as mode,
            jsonb_agg(jsonb_build_object('i', s.prompt_idx, 'tier', s.tier, 'pts', s.pts, 'player_id', s.player_id, 'pct', s.pct)
                      order by s.prompt_idx) filter (where s.prompt_idx is not null) as cards
     from days d left join s on s.pack_date = d.pack_date
@@ -406,7 +417,7 @@ as $$
     'tiers',          (select jsonb_object_agg(t, coalesce(n, 0)) from unnest(array['copper','silver','gold','emerald','refr','one']) t
                        left join (select tier, count(*) n from s group by tier) c on c.tier = t),
     'rarest',         (select to_jsonb(rarest) from rarest),
-    'history',        coalesce((select jsonb_agg(jsonb_build_object('date', pack_date, 'score', score, 'final', final,
+    'history',        coalesce((select jsonb_agg(jsonb_build_object('date', pack_date, 'score', score, 'final', final, 'mode', mode,
                                                                     'cards', coalesce(cards, '[]'::jsonb)) order by pack_date desc)
                                 from (select * from packs order by pack_date desc limit 100) h), '[]'::jsonb)
   );
@@ -519,19 +530,25 @@ $$;
 -- ---------------------------------------------------------------- results screen
 
 -- How a finished day looks for everyone, for the results screen (daily pack only):
---   players   how many finished the pack
+--   mode      whose scores these are: my mode that day (easy or hard); the board only compares
+--             players in the same mode. Pick rates (and deepest) count everyone.
+--   players   how many finished the pack in that mode (all_players: both modes)
 --   hist      81 counts: hist[k] = players whose current score is 10k..10k+9 (0-800)
 --   me        my current score, rank (1 + players who scored more) and below (players who scored less)
 --   deepest   per prompt, the rarest pick anyone made today (player, %, picks)
 --   final     true once the date has closed
 -- Scores are recomputed from everyone's picks with the same blend as pick_scores, so the curve
 -- moves as people play and locks when the day settles. Only counts and scores come out, no users.
-create or replace function get_day_board(p_date date)
+drop function if exists get_day_board(date);
+create or replace function get_day_board(p_date date, p_mode text default 'hard')
 returns jsonb
 language sql stable security definer
 set search_path = public
 as $$
   with me as (select require_user() as id),
+  my_mode as (
+    select coalesce((select mode from submissions where pack_date = p_date and user_id = (select id from me)), p_mode) as m
+  ),
   counts as (
     select prompt_idx, player_id, count(*)::int as same,
            sum(count(*)) over (partition by prompt_idx)::int as total
@@ -547,7 +564,7 @@ as $$
     select s.user_id, coalesce(sum(case when x.pct >= 25 then 10 when x.pct >= 10 then 25 when x.pct >= 5 then 40
                                         when x.pct >= 2 then 60 when x.pct >= 0.5 then 80 else 100 end), 0)::int as score
     from submissions s left join scored x on x.user_id = s.user_id
-    where s.pack_date = p_date
+    where s.pack_date = p_date and s.mode = (select m from my_mode)
     group by s.user_id
   ),
   mine as (select score from board where user_id = (select id from me)),
@@ -556,7 +573,9 @@ as $$
     from scored order by prompt_idx, pct, player_id
   )
   select jsonb_build_object(
+    'mode',    (select m from my_mode),
     'players', (select count(*) from board),
+    'all_players', (select count(*) from submissions where pack_date = p_date),
     'hist',    (select jsonb_agg(coalesce(n, 0) order by k)
                 from generate_series(0, 80) k
                 left join (select score / 10 as b, count(*)::int n from board group by 1) h on h.b = k),
@@ -578,11 +597,11 @@ begin
   foreach f in array array[
     'pack_date_open(date)', 'require_user()', 'is_guest()', 'pick_scores(uuid)',
     'get_or_create_pack(date, jsonb)', 'submit_pick(date, smallint, bigint, real)',
-    'get_pick_rates(date)', 'submit_score(date, smallint)', 'get_my_day(date)',
+    'get_pick_rates(date)', 'submit_score(date, smallint, text)', 'get_my_day(date)',
     'username_available(text)', 'set_username(text)', 'get_profile()',
     'start_transfer()', 'claim_transfer(uuid)', 'get_my_stats(date)',
     'get_fame_model()', 'get_closed_day(date)', 'propose_fame_model(date, jsonb)',
-    'get_day_board(date)', 'submit_report(date, smallint, text, bigint, text, text)']
+    'get_day_board(date, text)', 'submit_report(date, smallint, text, bigint, text, text)']
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f);
   end loop;
@@ -591,7 +610,7 @@ grant execute on function get_or_create_pack(date, jsonb)          to anon, auth
 grant execute on function get_pick_rates(date)                     to anon, authenticated;
 grant execute on function username_available(text)                to anon, authenticated;
 grant execute on function submit_pick(date, smallint, bigint, real) to authenticated;
-grant execute on function submit_score(date, smallint)             to authenticated;
+grant execute on function submit_score(date, smallint, text)       to authenticated;
 grant execute on function get_my_day(date)                         to authenticated;
 grant execute on function set_username(text)                       to authenticated;
 grant execute on function get_profile()                            to authenticated;
@@ -601,5 +620,5 @@ grant execute on function get_my_stats(date)                       to authentica
 grant execute on function get_fame_model()                         to anon, authenticated;
 grant execute on function get_closed_day(date)                     to anon, authenticated;
 grant execute on function propose_fame_model(date, jsonb)          to authenticated;
-grant execute on function get_day_board(date)                     to authenticated;
+grant execute on function get_day_board(date, text)               to authenticated;
 grant execute on function submit_report(date, smallint, text, bigint, text, text) to authenticated;

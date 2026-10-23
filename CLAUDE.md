@@ -178,7 +178,12 @@ steps and check in before big changes.
   refreshed every minute until the day settles; then the per-prompt reveal: my pick (%, tier),
   most picked, deepest pull today, 3 deepest valid answers. Pick % shows on cards and is tagged
   live / final / est.
-- **"?" button** (header) opens the how-to panel with the tier table.
+- **"?" button** (header) opens the how-to panel with the tier table and one line per mode.
+- **Modes in Supabase:** submissions.mode ('easy'/'hard', default 'hard' = packs from before
+  modes). submit_score(date, total, mode); get_my_day returns the day's mode (a second device
+  takes it over once the pack is submitted); get_day_board(date, mode) ranks within my mode
+  (my submission's mode wins over the argument) and also returns all_players; get_my_stats
+  history has mode per pack. Mode is only stored at submission.
 
 ## Game rules (decided — don't change without asking)
 - **One pack a day. Core rule.** No unlimited mode in the public game. After the daily pack the
@@ -192,10 +197,19 @@ steps and check in before big changes.
   doesn't reset the clock.
 - **3 tries per prompt.** Wrong player = strike. 3 strikes or time out = brick (0 pts).
   A player can only be used once per pack.
-- **No autocomplete dropdown.** Type the full name, Enter or Shoot button submits.
-  Misspelled/partial name doesn't count as a try; shows "Did you mean X?" button.
-  Clicking it fills the input but does NOT submit. Last-name-only typing triggering
-  "did you mean" is fine (decided).
+- **Two modes (Lanky, replaces the old "no dropdown" rule)**, chosen on the start panel before the
+  daily pack and locked for that day; the last choice is the default next time (new players: easy).
+  - **Easy:** from 2 letters, a dropdown of up to 6 names from ALL players, matched by name only
+    (never filtered by who fits: that would give answers away). Best matches first: full-name
+    start, then last-name start, then better known. Accents/punctuation ignored. Tapping a name
+    fills the input (arrow keys + Enter too); Enter or Shoot submits.
+  - **Hard:** no dropdown, type the full name. Badge "🔥 HARD" on the prompt, results screen,
+    share text and Stats history. No bonus points.
+  - Both: Enter or Shoot submits. Misspelled/partial name doesn't count as a try; shows "Did you
+    mean X?" button that fills the input but does NOT submit. Last-name-only typing triggering
+    "did you mean" is fine (decided).
+  - Picks from both modes count toward the same pick rates. The results board (curve,
+    percentile, rank) only compares players in your mode.
 - **Only NBA from the 1970-71 season onward.** Franchise history merges (Sonics = Thunder,
   New Jersey = Nets, Vancouver = Grizzlies, Bullets = Wizards, etc.).
 

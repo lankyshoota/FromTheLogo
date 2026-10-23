@@ -38,8 +38,9 @@ body{
   padding-left:max(16px, env(safe-area-inset-left,0px));
   padding-right:max(16px, env(safe-area-inset-right,0px));
   display:flex;flex-direction:column;gap:18px}
-header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.mark{font-family:var(--display);font-weight:900;font-size:clamp(44px,12vw,64px);line-height:.85;letter-spacing:.01em;margin:0;text-transform:uppercase}
+header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+header>div:first-child{min-width:0}
+.mark{font-family:var(--display);font-weight:900;font-size:clamp(38px,11vw,64px);line-height:.85;letter-spacing:.01em;margin:0;text-transform:uppercase}
 .mark span{background:linear-gradient(100deg,#f3d27a,#e8b84a 40%,#fff3cf 55%,#b8862b);-webkit-background-clip:text;background-clip:text;color:transparent}
 .sub{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-top:6px}
 .score{text-align:right}
@@ -129,6 +130,20 @@ details.how p{margin:.6em 0 0;color:var(--muted);max-width:60ch}
 /* guess box */
 .guess{grid-column:1/-1;display:flex;flex-direction:column;gap:8px;margin-top:4px}
 .row{display:flex;gap:8px}
+.ac{position:relative;flex:1;min-width:0;display:flex}
+.ac input{flex:1;min-width:0}
+.sugg{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;list-style:none;margin:0;padding:4px;background:var(--sleeve);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.sugg li{padding:9px 10px;border-radius:7px;font:500 17px var(--body);cursor:pointer}
+.sugg li:hover,.sugg li[aria-selected="true"]{background:rgba(232,184,74,.16);color:var(--gold)}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.modes button{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,.18);color:var(--text);cursor:pointer;font:inherit}
+.modes button b{font:900 20px/1 var(--display);text-transform:uppercase;letter-spacing:.02em}
+.modes button small{font-size:13px;color:var(--muted)}
+.modes button[aria-checked="true"]{border-color:var(--gold);background:rgba(232,184,74,.1)}
+.modes button[aria-checked="true"] b{color:var(--gold)}
+.hardtag{font:700 11px var(--mono);letter-spacing:.06em;color:#ff9a3c;white-space:nowrap}
+.hardtag.big{font-size:14px;vertical-align:middle;border:1px solid rgba(255,154,60,.45);border-radius:6px;padding:2px 6px;margin-left:6px}
+.panel .fine{font-size:13px;color:var(--muted)}
 .row input{flex:1;min-width:0;font:500 18px var(--body);color:var(--text);background:var(--binder);border:1px solid var(--line);border-radius:10px;padding:11px 12px}
 .row input::placeholder{color:var(--muted)}
 .sugg{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--binder)}
@@ -189,7 +204,7 @@ details.how p{margin:.6em 0 0;color:var(--muted);max-width:60ch}
 .form .radios label{flex-direction:row;gap:8px;align-items:center;font:500 15px var(--body);text-transform:none;letter-spacing:0;color:var(--text)}
 .form .radios input{accent-color:var(--gold);width:16px;height:16px}
 .form textarea{resize:vertical}
-.hd-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.hd-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0}
 .help{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);font:700 18px var(--body);cursor:pointer;line-height:1}
 .help:hover{border-color:var(--gold);color:var(--gold)}
 .howto ul{margin:0 0 14px;padding-left:18px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
@@ -373,8 +388,14 @@ const dayNum = Math.round((today - DAY0)/864e5) + 1;
 function buildPack(seed){
   return seed.startsWith('daily-') ? GEN.daily(seed.slice(6)) : GEN.random(rng(seed));
 }
+/* easy = name suggestions while typing, hard = type the full name. Picked before the pack starts,
+   locked for that pack; the last choice is the default next time (new players start on easy). */
+const LEVEL_KEY = 'fromthelogo:level';
+const prefLevel = () => { try { return localStorage.getItem(LEVEL_KEY) === 'hard' ? 'hard' : 'easy'; } catch(e){ return 'easy'; } };
+const isHard = (st = state) => st.level === 'hard';
+const HARD_BADGE = '🔥 HARD';
 function freshState(mode, seed){
-  return { mode, seed, tv:2, date: localKey(), started:false, prompts: buildPack(seed), slots: Array.from({length:PACK_SIZE}, () => ({ status:'open', strikes:0 })), active:0 };
+  return { mode, seed, tv:2, level: prefLevel(), date: localKey(), started:false, prompts: buildPack(seed), slots: Array.from({length:PACK_SIZE}, () => ({ status:'open', strikes:0 })), active:0 };
 }
 /* saved packs are per user: fromthelogo:<user id>:<date> ("local" when offline with no user) */
 const storeKey = (date, uid = user?.id || 'local') => `fromthelogo:${uid}:${date}`;
@@ -384,6 +405,7 @@ function load(date = localKey()){
     if (s && s.prompts && s.prompts.length === PACK_SIZE && s.prompts.every(id => PROMPTS[id])) {
       s.date ||= date;
       if (!s.tv) { s.slots.forEach(x => { if (x.tier) x.tier = OLD_TIERS[x.tier] || x.tier; }); s.tv = 2; }
+      s.level ||= s.started ? 'hard' : prefLevel();   // packs from before modes were typed in full
       return s;
     }
   } catch(e){}
@@ -481,7 +503,7 @@ async function sendScore(st){
   if (st.mode !== 'daily' || !st.online || st.scoreSent || st.slots.some(s => s.status === 'open')) return st.scoreSent;
   if (Date.now() >= closesAt(st.date)) return;
   try {
-    await rpc('submit_score', { p_date:st.date, p_total:st.slots.reduce((a,s) => a + (s.pts||0), 0) });
+    await rpc('submit_score', { p_date:st.date, p_total:st.slots.reduce((a,s) => a + (s.pts||0), 0), p_mode:st.level || 'hard' });
     st.scoreSent = true; save(st);
   } catch(e){}
   return st.scoreSent;
@@ -565,6 +587,7 @@ async function reconcileDay(st){
     st.slots[p.prompt_idx] = { status:'pulled', pick:BY_ID.get(p.player_id)?.n || `Player #${p.player_id}`, id:p.player_id,
                                pct:p.pct, tier:p.tier, pts:p.pts, strikes:0 };
   }
+  if (day.mode) st.level = day.mode;   // finished on another device: that device's mode
   if (day.submitted) {
     st.slots = st.slots.map((s, i) => day.picks.some(p => p.prompt_idx === i) ? s : { status:'blank', strikes:3, pts:0 });
     st.scoreSent = true;
@@ -851,6 +874,8 @@ function sheetHelp(){
     <ul>
       <li><strong>One pack a day.</strong> ${PACK_SIZE} prompts, the same for everyone.</li>
       <li><strong>20 seconds per prompt.</strong> Name any NBA player (1970-71 on) who fits.</li>
+      <li><strong>Easy:</strong> names pop up as you type (from every player, not just ones who fit).</li>
+      <li><strong>Hard:</strong> no suggestions, type the full name. Same points; ranked only against other hard-mode players.</li>
       <li><strong>3 tries.</strong> A player who doesn't fit costs a try. Out of tries or time is a brick (0 points). Each player once per pack.</li>
       <li><strong>Rarer answers score more.</strong> The fewer people who pick your player, the better the card, and every point pushes your shooter a foot further from the hoop.</li>
       <li>Franchise history counts: Sonics are Thunder, Bullets are Wizards, New Jersey is Brooklyn, Vancouver is Memphis.</li>
@@ -915,7 +940,7 @@ async function showStats(){
     <h3>Pack history</h3>
     ${st.history.length ? `<ul class="hist">${st.history.map(h => {
       const row = Array.from({ length:PACK_SIZE }, (_, i) => { const c = h.cards.find(c => c.i === i); return c ? TIERS.find(t => t.id === c.tier).emoji : '❌'; }).join('');
-      return `<li><span class="d">${fmtDay(h.date)}</span><span class="sc">${h.score}</span><span class="row7" aria-label="${h.cards.length} cards pulled">${row}</span><span class="tag">${h.final ? 'final' : 'live'} · ${Math.max(2, h.score)} ft</span></li>`;
+      return `<li><span class="d">${fmtDay(h.date)}</span><span class="sc">${h.score}</span><span class="row7" aria-label="${h.cards.length} cards pulled">${row}</span><span class="tag">${h.mode === 'hard' ? `<span class="hardtag">${HARD_BADGE}</span> · ` : ''}${h.final ? 'final' : 'live'} · ${Math.max(2, h.score)} ft</span></li>`;
     }).join('')}</ul>` : '<span class="meta">No packs yet.</span>'}`;
 }
 
@@ -962,18 +987,23 @@ function render(flipIdx = -1){
       <span class="num">${PACK_SIZE} prompts · 20 seconds each</span>
       <span class="prompt big">${state.mode === 'daily' ? "Ready to rip today's pack?" : 'Ready to rip a test pack?'}</span>
       <span class="meta">One prompt at a time. The clock starts as soon as each prompt shows up. Run out of time and it's a brick.</span>
+      <div class="modes" role="radiogroup" aria-label="Mode">
+        <button type="button" role="radio" data-level="easy" aria-checked="${!isHard()}"><b>Easy</b><small>Name suggestions as you type</small></button>
+        <button type="button" role="radio" data-level="hard" aria-checked="${isHard()}"><b>${HARD_BADGE}</b><small>Type the full name</small></button>
+      </div>
+      <span class="fine">Locked once you start. Same scoring; you're ranked against players in your mode.</span>
       <button class="btn primary" id="startBtn">Start pack</button>
     </div>`;
   } else if (!done) {
     const i = state.active, s = state.slots[i], pid = state.prompts[i];
     panel = `${last}<div class="panel" id="panel">
-      <div class="ptop"><span class="num">Prompt ${i+1} of ${PACK_SIZE}</span><span class="clock" id="clock">20</span></div>
+      <div class="ptop"><span class="num">Prompt ${i+1} of ${PACK_SIZE}${isHard() ? ` · <span class="hardtag">${HARD_BADGE}</span>` : ''}</span><span class="clock" id="clock">20</span></div>
       <div class="bar"><i id="bar"></i></div>
       <span class="prompt big">${esc(PROMPTS[pid].text)}</span>
       <span class="meta">${odds(pid).list.length} players in the database fit</span>
       <div class="guess">
-        <div class="row"><input id="guess" type="text" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="go" placeholder="Type the full name" aria-label="Player name"><button class="btn primary" id="shootBtn" type="button">Shoot</button></div>
-                <div class="dym" id="dym" hidden></div>
+        <div class="row"><div class="ac"><input id="guess" type="text" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="go" placeholder="${isHard() ? 'Type the full name' : 'Start typing a name'}" aria-label="Player name"${isHard() ? '' : ' role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sugg"'}><ul class="sugg" id="sugg" role="listbox" hidden></ul></div><button class="btn primary" id="shootBtn" type="button">Shoot</button></div>
+        <div class="dym" id="dym" hidden></div>
         <div class="status ${msg.bad?'bad':''}" id="status">${esc(msg.text) || 'Tries left'}<span class="strikes">${[0,1,2].map(k=>`<i class="${k < s.strikes ? 'x' : ''}"></i>`).join('')}</span></div>
         <button class="skip" id="skipBtn">Skip this one (0 pts)</button>
       </div>
@@ -982,9 +1012,14 @@ function render(flipIdx = -1){
   $('page').innerHTML = strip + panel;
 
   $('startBtn')?.addEventListener('click', () => { state.started = true; save(); render(); focusInput(); });
+  document.querySelectorAll('.modes [data-level]').forEach(b => b.addEventListener('click', () => {
+    state.level = b.dataset.level; try { localStorage.setItem(LEVEL_KEY, state.level); } catch(e){}
+    save(); render();
+  }));
   const inp = $('guess');
   if (inp) {
-    inp.addEventListener('input', () => { didYouMean([]); if (msg.bad) setStatus('', false); });
+    inp.addEventListener('input', () => { didYouMean([]); if (msg.bad) setStatus('', false); suggest(); });
+    inp.addEventListener('blur', () => setTimeout(() => showSugg([]), 150));
     $('shootBtn').addEventListener('click', () => { tryGuess(); focusInput(); });
     inp.addEventListener('keydown', onKey);
     $('skipBtn').addEventListener('click', () => {
@@ -1084,8 +1119,73 @@ function didYouMean(list){
     didYouMean([]); setStatus('', false); inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
   }));
 }
+/* easy mode: up to 6 names from the WHOLE database that match what's typed. Matched by name only,
+   never by who fits the prompt (that would give answers away). Every typed word has to start a
+   word of the name (or sit inside it, from 3 letters); full-name starts first, then last-name
+   starts, then the better-known player. Accents and punctuation ignored. */
+let NAMES = null, sugg = [], suggAt = -1;
+function nameIndex(){
+  NAMES ||= [...BY_NAME.entries()].map(([k, ps]) => ({ k, n: ps[0].n, w: k.split(' '), fame: Math.max(...ps.map(p => (p.fame10 || 0) + (p.fame || 0) + (p.p || 0))) }));
+  return NAMES;
+}
+function suggestions(raw){
+  const q = norm(raw).trim().replace(/\s+/g, ' ');
+  if (q.replace(/ /g, '').length < 2) return [];
+  const qt = q.split(' '), out = [];
+  for (const e of nameIndex()) {
+    let rank;
+    if (e.k.startsWith(q)) rank = 0;
+    else {
+      const used = new Set(); let inside = false, ok = true;
+      for (const t of qt) {
+        let j = e.w.findIndex((w, x) => !used.has(x) && w.startsWith(t));
+        if (j < 0 && t.length >= 3) { j = e.w.findIndex((w, x) => !used.has(x) && w.includes(t)); inside = j >= 0 || inside; }
+        if (j < 0) { ok = false; break; }
+        used.add(j);
+      }
+      if (!ok) continue;
+      rank = inside ? 3 : e.w.at(-1).startsWith(qt[0]) ? 1 : 2;
+    }
+    out.push({ e, rank });
+  }
+  return out.sort((a, b) => a.rank - b.rank || b.e.fame - a.e.fame || a.e.n.length - b.e.n.length).slice(0, 6).map(x => x.e.n);
+}
+function suggest(){
+  const inp = $('guess');
+  if (!inp || isHard()) return;
+  showSugg(suggestions(inp.value));
+}
+function showSugg(list){
+  const box = $('sugg'), inp = $('guess'); if (!box || !inp) return;
+  sugg = list; suggAt = -1;
+  // nothing to suggest once the box already holds exactly that name
+  if (!list.length || (list.length === 1 && norm(list[0]) === norm(inp.value.trim()))) { box.hidden = true; box.innerHTML = ''; inp.setAttribute('aria-expanded', 'false'); return; }
+  box.innerHTML = list.map((n, k) => `<li role="option" id="sg${k}" data-k="${k}">${esc(n)}</li>`).join('');
+  box.hidden = false; inp.setAttribute('aria-expanded', 'true');
+  box.querySelectorAll('li').forEach(li => li.addEventListener('pointerdown', e => { e.preventDefault(); pickSugg(+li.dataset.k); }));
+}
+function pickSugg(k){
+  const inp = $('guess'); if (!inp || !sugg[k]) return;
+  inp.value = sugg[k]; showSugg([]); didYouMean([]); if (msg.bad) setStatus('', false);
+  inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
+}
+function moveSugg(d){
+  if (!sugg.length || $('sugg').hidden) return false;
+  suggAt += d;                                   // cycles through the list and back to the typed text (-1)
+  if (suggAt < -1) suggAt = sugg.length - 1;
+  if (suggAt >= sugg.length) suggAt = -1;
+  $('sugg').querySelectorAll('li').forEach((li, k) => li.setAttribute('aria-selected', k === suggAt));
+  $('guess').setAttribute('aria-activedescendant', suggAt >= 0 ? 'sg' + suggAt : '');
+  return true;
+}
 function onKey(e){
-  if (e.key === 'Enter'){ e.preventDefault(); tryGuess(); }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { if (moveSugg(e.key === 'ArrowDown' ? 1 : -1)) e.preventDefault(); return; }
+  if (e.key === 'Escape' && sugg.length) { showSugg([]); return; }
+  if (e.key === 'Enter'){
+    e.preventDefault();
+    if (suggAt >= 0) { pickSugg(suggAt); return; }   // a highlighted suggestion fills the box; Enter again shoots
+    showSugg([]); tryGuess();
+  }
 }
 function focusInput(){ const i = $('guess'); if (i) i.focus({preventScroll:true}); }
 
@@ -1122,7 +1222,7 @@ function next(i){
 function shareText(){
   const total = state.slots.reduce((a,s)=>a+(s.pts||0),0);
   const row = state.slots.map(s => s.status === 'blank' ? '❌' : TIERS.find(t=>t.id===s.tier).emoji).join('');
-  const head = state.mode === 'daily' ? `FromTheLogo #${dayNum}` : 'FromTheLogo · test pack';
+  const head = (state.mode === 'daily' ? `FromTheLogo #${dayNum}` : 'FromTheLogo · test pack') + (isHard() ? ' ' + HARD_BADGE : '');
   const d = distOf(total);
   return `${head}\n${row}\n${total} / ${MAX_PTS} · 🏀 ${Math.round(d)} ft (${distLabel(d)})`;
 }
@@ -1136,7 +1236,7 @@ async function refreshBoard(){
   if (state.mode !== 'daily' || !state.online || state.slots.some(s => s.status === 'open')) return;
   try {
     await sendScore(state);
-    const [b, rows] = await Promise.all([rpc('get_day_board', { p_date:date }, 6000), rpc('get_pick_rates', { p_date:date }, 6000)]);
+    const [b, rows] = await Promise.all([rpc('get_day_board', { p_date:date, p_mode:state.level || 'hard' }, 6000), rpc('get_pick_rates', { p_date:date }, 6000)]);
     if (state.date !== date) return;
     loadRates(date, rows); board = { date, ...b };
     renderResults(true);
@@ -1150,7 +1250,7 @@ function standingHTML(b){
   const others = b.players - 1, beat = others > 0 ? Math.round(100 * b.me.below / others) : 0;
   const ties = b.players - b.me.below - b.me.rank;
   return `<div class="standing">
-    <div><b>${others > 0 ? beat + '%' : '1st'}</b><small>${others > 0 ? `of players beaten${b.final ? '' : ' so far'}` : 'to finish today'}</small></div>
+    <div><b>${others > 0 ? beat + '%' : '1st'}</b><small>${others > 0 ? `of ${b.mode === 'hard' ? 'hard-mode' : 'easy-mode'} players beaten${b.final ? '' : ' so far'}` : 'to finish today'}</small></div>
     <div><b>#${b.me.rank}</b><small>of ${b.players.toLocaleString()}${ties > 0 ? ` · tied with ${ties}` : ''}</small></div>
   </div>`;
 }
@@ -1182,7 +1282,7 @@ function curveHTML(b){
     return `<text class="${cls}" x="${x(v)}" text-anchor="${anchor}"`;
   };
   return `<figure class="curve">
-    <figcaption>Today's scores <span class="tag ${b.final ? 'final' : 'live'}">${b.final ? 'final' : 'live'}</span></figcaption>
+    <figcaption>Today's scores · ${b.mode === 'hard' ? 'hard' : 'easy'} mode <span class="tag ${b.final ? 'final' : 'live'}">${b.final ? 'final' : 'live'}</span></figcaption>
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Distribution of today's scores from 0 to ${MAX_PTS}${me != null ? `; you scored ${me}` : ''}">
       <g class="bars">${bars}</g>
       <path class="line" d="${path}"/>
@@ -1263,7 +1363,7 @@ function renderResults(done){
   const total = state.slots.reduce((a,s)=>a+(s.pts||0),0);
   const best = state.slots.filter(s=>s.status==='pulled').sort((a,b)=>a.pct-b.pct)[0];
   $('results').innerHTML = `<div class="results">
-    <h2>Pack opened</h2>
+    <h2>Pack opened${isHard() ? ` <span class="hardtag big">${HARD_BADGE}</span>` : ''}</h2>
     <div class="big">${total}<small>/ ${MAX_PTS} · shot from ${Math.round(distOf(total))} ft</small></div>
     ${status ? `<div class="meta">${status}</div>` : ''}
     ${best ? `<div class="meta">Best pull: <strong>${esc(best.pick)}</strong>, picked by ${fmtPct(best.pct)} of players.</div>` : ''}
